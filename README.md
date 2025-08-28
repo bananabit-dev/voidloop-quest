@@ -1,4 +1,4 @@
-![Void Loop Quest](assets/voidloopquest-finished.svg "Void Loop Quest")
+![Void Loop Quest](assets/logo.svg "Void Loop Quest")
 
 # void loop quest
 
