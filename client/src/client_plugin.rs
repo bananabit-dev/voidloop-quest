@@ -2,10 +2,9 @@ use crate::screens;
 use bevy::prelude::*;
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::*;
-use client::{PredictionSet, Rollback};
 use leafwing_input_manager::prelude::*;
-use lightyear::inputs::leafwing::input_buffer::InputBuffer;
 use lightyear::prelude::client::*;
+use lightyear::prelude::*;
 use shared::prelude::*;
 
 /// The game name sent to the matchmaker when requesting a server to play on
@@ -55,7 +54,7 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
                 // we don't spawn bullets during rollback.
                 // if we have the inputs early (so not in rb) then we spawn,
                 // otherwise we rely on normal server replication to spawn them
-                shared_player_firing.run_if(not(client::is_in_rollback)),
+                shared_player_firing.run_if(not(is_in_rollback)),
             )
                 .chain()
                 .in_set(FixedSet::Main),
@@ -67,7 +66,7 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
         app.add_systems(
             FixedUpdate,
             handle_hit_event
-                .run_if(on_event::<BulletHitEvent>())
+                .run_if(on_event::<BulletHitEvent>)
                 .after(process_collisions),
         );
 

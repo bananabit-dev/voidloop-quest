@@ -6,8 +6,6 @@
 // use client::prediction::Predicted;
 // use connection::id::ClientId;
 
-use lightyear::prelude::*;
-
 // use shared::config::{Mode, SharedConfig};
 mod protocol_plugin;
 mod shared_plugin;

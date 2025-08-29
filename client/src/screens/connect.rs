@@ -1,7 +1,7 @@
 use crate::screens::*;
 use bevy::{color::palettes::css, prelude::*};
-use client::NetClient;
-use lightyear::connection::client::ConnectionState;
+use lightyear::prelude::client::*;
+use lightyear::prelude::*;
 use shared::prelude::*;
 
 pub(super) fn plugin(app: &mut App) {

@@ -1,13 +1,10 @@
 use bevy::log::{Level, LogPlugin};
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
-use bevy::hierarchy::HierarchyPlugin;
 use lightyear::prelude::server::*;
 use lightyear::prelude::*;
-use lightyear::webtransport::server::Identity;
 use shared::prelude::*;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::time::Duration;
 
 mod server_plugin;
 use server_plugin::*;
@@ -61,7 +58,6 @@ fn main() {
     #[cfg(not(feature = "gui"))]
     app.add_plugins((
         MinimalPlugins,
-        HierarchyPlugin,
         StatesPlugin,
     ));
 
@@ -189,7 +185,7 @@ fn configure_local_server(app: &mut App, server_entity: Entity, private_key: [u8
 }
 
 fn start_server(mut commands: Commands, server: Query<Entity, With<Server>>) {
-    if let Ok(server_entity) = server.get_single() {
+    if let Ok(server_entity) = server.single() {
         info!("🚀 Starting server...");
         commands.trigger_targets(Start, server_entity);
     }
