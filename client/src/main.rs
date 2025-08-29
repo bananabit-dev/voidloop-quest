@@ -21,7 +21,7 @@ fn main() {
     );
     app.add_plugins(LogPlugin {
         level: Level::INFO,
-        filter: "wgpu=error,bevy_render=info,bevy_ecs=warn".to_string(),
+        filter: "bevy_render=info,bevy_ecs=warn".to_string(),
         ..default() // update_subscriber: Some(add_log_layer),
     });
 

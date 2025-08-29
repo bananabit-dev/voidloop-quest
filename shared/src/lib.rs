@@ -21,7 +21,7 @@ mod renderer;
 // use shared::replication::components::Controlled;
 
 pub mod prelude {
-    pub use bevy::utils::Duration;
+    pub use std::time::Duration;
 
     /// Must match on server and client. Bump it whenever you make breaking changes to the protocol.
     pub const PROTOCOL_ID: u64 = 80085;
@@ -31,6 +31,8 @@ pub mod prelude {
     pub const WALL_SIZE: f32 = 350.0;
     pub const FIXED_TIMESTEP_HZ: f64 = 64.0;
     pub const MAX_VELOCITY: f32 = 200.0;
+    pub use lightyear::prelude::PredictionDespawnCommandsExt;
+
     pub use std::f32::consts::TAU;
 
     // For non-bevygap (ie, non-connect token) builds, we use a dummy zeroed key on client and server
@@ -47,23 +49,11 @@ pub mod prelude {
     pub use super::read_lightyear_private_key_from_env;
     pub use avian2d::prelude::*;
     pub use leafwing_input_manager::prelude::ActionState;
-    pub use lightyear::connection::netcode::PRIVATE_KEY_BYTES;
-    pub use lightyear::prelude::{client::Predicted, *};
-    pub use lightyear::shared::replication::components::Controlled;
+    pub use lightyear::netcode::PRIVATE_KEY_BYTES;
+    pub use lightyear::prelude::*;
 }
 
 use prelude::*;
-
-/// The [`SharedConfig`] must be shared between the `ClientConfig` and `ServerConfig`
-pub fn shared_config() -> SharedConfig {
-    SharedConfig {
-        server_replication_send_interval: SERVER_REPLICATION_INTERVAL,
-        tick: lightyear::shared::tick_manager::TickConfig {
-            tick_duration: Duration::from_secs_f64(1.0 / FIXED_TIMESTEP_HZ),
-        },
-        mode: Mode::Separate,
-    }
-}
 
 /// Reads and parses the LIGHTYEAR_PRIVATE_KEY environment variable into a private key.
 pub fn read_lightyear_private_key_from_env() -> Option<[u8; PRIVATE_KEY_BYTES]> {

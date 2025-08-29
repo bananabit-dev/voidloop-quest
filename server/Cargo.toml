@@ -6,7 +6,7 @@ authors.workspace = true
 publish.workspace = true
 
 [features]
-default = ["bevygap"]
+default = []
 gui = ["shared/gui"]
 bevygap = ["dep:bevygap_server_plugin"]
 

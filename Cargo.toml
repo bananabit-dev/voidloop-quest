@@ -1,5 +1,7 @@
 [workspace]
-members = [ "client", "server", "shared"]
+members = [ "client", "server", "shared", "tools/lobby" ]
+
+
 resolver = "2"
 
 [workspace.package]
@@ -30,12 +32,13 @@ debug = false
 
 [workspace.dependencies]
 # lightyear ver must match exactly with bevygap's version!
-lightyear = {git = "https://github.com/bananabit-dev/lightyear.git", features = ["webtransport", "leafwing", "avian2d"], default-features = false}
-avian2d   = { version = "0.1.1", default-features = false, features = ["serialize", "default-collider", "enhanced-determinism", "2d", "f32", "parry-f32"] }
-bevy = {version = "0.14", default-features = false}
+lightyear = {git = "https://github.com/bananabit-dev/lightyear.git", default-features = false, features = ["webtransport", "leafwing", "avian2d", "server", "client", "prediction", "netcode"]}
+avian2d   = { version = "0.3", default-features = false, features = ["serialize", "default-collider", "enhanced-determinism", "2d", "f32", "parry-f32"] }
+bevy = {version = "0.16", default-features = false}
+bevy_ecs = "0.16"
 serde     = { version = "1.0.188", features = ["derive"] }
-clap      = { version = "4.5.7", features = ["derive"] }
-leafwing-input-manager = {version = "0.15.1", default-features = false, features = ["mouse", "keyboard", "gamepad"]}
+clap      = { version = "4.5.7", features = ["derive", "env"] }
+leafwing-input-manager = {version = "0.17.1", default-features = false, features = ["mouse", "keyboard", "gamepad", "ui", "asset"]}
 tracing = "0.1.40"
 tracing-log = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = [
@@ -43,11 +46,9 @@ tracing-subscriber = { version = "0.3.17", features = [
   "env-filter",
 ] }
 
-bevygap_client_plugin = {git = "https://github.com/bananabit-dev/bevygap.git"}
-bevygap_server_plugin = {git = "https://github.com/bananabit-dev/bevygap.git"}
-
-#bevygap_client_plugin = {path = "../bevygap/bevygap_client_plugin/"}
-#bevygap_server_plugin = {path = "../bevygap/bevygap_server_plugin/"}
+# Use local bevygap path to align Bevy 0.16
+bevygap_client_plugin = {path = "../bevygap/bevygap_client_plugin/"}
+bevygap_server_plugin = {path = "../bevygap/bevygap_server_plugin/"}
 
 [workspace.lints.clippy]
 type_complexity = "allow"
@@ -59,4 +60,4 @@ unsafe_code = "deny"
 [patch.crates-io]
 
 # Need this so LWIM's bevy_egui dep is bumped to 0.29 for wasm reasons:
-leafwing-input-manager = {git = "https://github.com/bananabit-dev/leafwing-input-manager.git", rev = "d6ef9e154bfafb186d6ab2acbd17b6f9e0849f47"}
+# leafwing-input-manager = {git = "https://github.com/bananabit-dev/leafwing-input-manager.git", rev = "d6ef9e154bfafb186d6ab2acbd17b6f9e0849f47"}

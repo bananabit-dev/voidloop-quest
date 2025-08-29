@@ -1,4 +1,6 @@
 use crate::FIXED_TIMESTEP_HZ;
+use lightyear::prelude::{AppComponentExt, ChannelDirection, ChannelMode, ChannelSettings, ReliableSettings, ClientId, Tick};
+
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use bevy::utils::Duration;
@@ -7,11 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use lightyear::client::components::ComponentSyncMode;
 // use lightyear::client::interpolation::LinearInterpolator;
-// use lightyear::prelude::client::{self, LeafwingInputConfig};
-use lightyear::prelude::server::{Replicate, SyncTarget};
-use lightyear::prelude::*;
-use lightyear::utils::avian2d::*;
-// use tracing_subscriber::util::SubscriberInitExt;
+use lightyear::inputs::leafwing::plugin::InputPlugin as LyLeafwingInputPlugin;
+use lightyear::inputs::client::ClientInputPlugin as LyClientInputPlugin;
+use lightyear::inputs::config::InputConfig as LyInputConfig;
+use lightyear::inputs::leafwing::input_message::LeafwingSequence;
 
 // use crate::color_from_id;
 
@@ -255,7 +256,7 @@ impl Plugin for ProtocolPlugin {
             ..default()
         });
 
-        app.add_plugins(LeafwingInputPlugin::<PlayerActions>::default());
+        app.add_plugins(LyLeafwingInputPlugin::<PlayerActions>::default());
 
         // Player is synced as Simple, because we periodically update rtt ping stats
         app.register_component::<Player>(ChannelDirection::ServerToClient)
@@ -304,5 +305,15 @@ impl Plugin for ProtocolPlugin {
             .add_prediction(ComponentSyncMode::Full)
             .add_interpolation_fn(rotation::lerp)
             .add_correction_fn(rotation::lerp);
+
+        // Local adapter for latest Leafwing inputs -> Lightyear client input pipeline
+        let input_cfg: LyInputConfig<LeafwingSequence<PlayerActions>> = LyInputConfig {
+            packet_redundancy: 10,
+            send_interval: Duration::default(),
+            #[cfg(feature = "prediction")] rebroadcast_inputs: true,
+            marker: core::marker::PhantomData,
+            #[cfg(feature = "interpolation")] lag_compensation: false,
+        };
+        app.add_plugins(LyClientInputPlugin::<LeafwingSequence<PlayerActions>>::new(input_cfg));
     }
 }

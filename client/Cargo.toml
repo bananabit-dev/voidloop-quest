@@ -12,7 +12,7 @@ matchmaker-tls = ["bevygap_client_plugin/matchmaker-tls"]
 
 [dependencies]
 bevy = {workspace = true}
-shared = {path = "../shared", features = ["gui"]}
+shared = {path = "../shared"}
 lightyear.workspace = true
 avian2d.workspace = true
 serde.workspace = true

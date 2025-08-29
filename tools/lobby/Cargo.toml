@@ -1,0 +1,20 @@
+[package]
+name = "lobby"
+version.workspace = true
+edition = "2021"
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { version = "1" }
+edgegap_async = { path = "../../../bevygap/edgegap_async" }
+anyhow = "1"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+reqwest = { version = "0.12", features = ["json"] }
+
+

@@ -1,5 +1,12 @@
 use crate::prelude::*;
 use bevy::{ecs::query::QueryData, prelude::*};
+use bevy::prelude::Single;
+use crate::protocol_plugin::{
+    PlayerActions, BulletBundle, PhysicsBundle, ColorComponent, BulletHitEvent, Player,
+    BulletMarker, Lifetime, REPLICATION_GROUP, SHIP_LENGTH, BULLET_SIZE, Weapon, ProtocolPlugin,
+};
+use lightyear::prelude::PredictionDespawnCommandsExt;
+use lightyear::prelude::{Client, Server, LocalTimeline, Replicate, SyncTarget, NetworkTarget, PreSpawned, Controlled, ClientId};
 
 pub struct BevygapSpaceshipsSharedPlugin;
 
@@ -19,6 +26,7 @@ impl Plugin for BevygapSpaceshipsSharedPlugin {
         // from Transform->Pos, just Pos->Transform.
         app.insert_resource(avian2d::sync::SyncConfig {
             transform_to_position: false,
+            transform_to_collider_scale: true,
             position_to_transform: true,
         });
         // We change SyncPlugin to PostUpdate, because we want the visually interpreted values
@@ -30,29 +38,12 @@ impl Plugin for BevygapSpaceshipsSharedPlugin {
         )
         .add_plugins(SyncPlugin::new(PostUpdate));
 
-        app.insert_resource(Time::new_with(Physics::fixed_once_hz(FIXED_TIMESTEP_HZ)));
+        app.init_resource::<Time<Physics>>();
+        app.insert_resource(SubstepCount(1));
         app.insert_resource(Gravity(Vec2::ZERO));
 
-        app.configure_sets(
-            FixedUpdate,
-            (
-                // make sure that any physics simulation happens after the Main SystemSet
-                // (where we apply user's actions)
-                (
-                    PhysicsSet::Prepare,
-                    PhysicsSet::StepSimulation,
-                    PhysicsSet::Sync,
-                )
-                    .in_set(FixedSet::Physics),
-                (FixedSet::Main, FixedSet::Physics).chain(),
-            ),
-        );
-        app.add_systems(
-            FixedUpdate,
-            (process_collisions, lifetime_despawner).in_set(FixedSet::Main),
-        );
-
-        app.add_systems(PostProcessCollisions, filter_own_bullet_collisions);
+        app.add_systems(FixedUpdate, process_collisions);
+        app.add_systems(FixedUpdate, lifetime_despawner);
 
         app.add_event::<BulletHitEvent>();
         // registry types for reflection
@@ -89,49 +80,6 @@ fn init(mut commands: Commands) {
         Vec2::new(-WALL_SIZE, -WALL_SIZE),
         Color::WHITE,
     ));
-}
-
-// Players can't collide with their own bullets.
-// this is especially helpful if you are accelerating forwards while shooting, as otherwise you
-// might overtake / collide on spawn with your own bullets that spawn in front of you.
-fn filter_own_bullet_collisions(
-    mut collisions: ResMut<Collisions>,
-    q_bullets: Query<&BulletMarker>,
-    q_players: Query<&Player>,
-) {
-    collisions.retain(|contacts| {
-        if let Ok(bullet) = q_bullets.get(contacts.entity1) {
-            if let Ok(player) = q_players.get(contacts.entity2) {
-                if bullet.owner == player.client_id {
-                    return false;
-                }
-            }
-        }
-        if let Ok(bullet) = q_bullets.get(contacts.entity2) {
-            if let Ok(player) = q_players.get(contacts.entity1) {
-                if bullet.owner == player.client_id {
-                    return false;
-                }
-            }
-        }
-        true
-    });
-}
-
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub enum FixedSet {
-    /// Runs before main.
-    PreMain,
-    /// main fixed update systems (handle inputs)
-    /// Don't despawn entities in this set, use MainCouldDespawn!
-    Main,
-    /// anything that can despawn has to happen after Main, otherwise deferred commands that
-    /// try and manipulate entities will crash if the entity was already despawned.
-    MainCouldDespawn,
-    /// for decorating entities, to ensure all spawning has happened
-    PostMain,
-
-    Physics,
 }
 
 #[derive(QueryData)]
@@ -174,16 +122,7 @@ pub fn apply_action_state_to_player_movement(
     }
 }
 
-/// NB we are not restricting this query to `Controlled` entities on the clients, because we hope to
-///    receive PlayerActions for remote players ahead of the server simulating the tick (lag, input delay, etc)
-///    in which case we prespawn their bullets on the correct tick, just like we do for our own bullets.
-///
-///    When spawning here, we add the `PreSpawnedPlayerObject` component, and when the client receives the
-///    replication packet from the server, it matches the hashes on its own `PreSpawnedPlayerObject`, allowing it to
-///    treat our locally spawned one as the `Predicted` entity (and gives it the Predicted component).
-///
-///    This system doesn't run in rollback, so without early player inputs, their bullets will be
-///    spawned by the normal server replication (triggering a rollback).
+/// Spawn bullets on server or for locally-controlled player
 pub fn shared_player_firing(
     mut q: Query<
         (
@@ -196,17 +135,17 @@ pub fn shared_player_firing(
             Has<Controlled>,
             &Player,
         ),
-        Or<(With<Predicted>, With<ReplicationTarget>)>,
+        Or<(With<Predicted>, With<Replicate>)>,
     >,
     mut commands: Commands,
-    tick_manager: Res<TickManager>,
-    identity: NetworkIdentity,
+    timeline: Single<(&LocalTimeline, Has<Server>), Without<Client>>,
 ) {
     if q.is_empty() {
         return;
     }
 
-    let current_tick = tick_manager.tick();
+    let (timeline, is_server) = timeline.into_inner();
+    let current_tick = timeline.tick();
     for (
         player_position,
         player_rotation,
@@ -214,38 +153,32 @@ pub fn shared_player_firing(
         color,
         action,
         mut weapon,
-        _is_local,
+        is_local,
         player,
     ) in q.iter_mut()
     {
+        if !is_server && !is_local {
+            continue;
+        }
         if !action.pressed(&PlayerActions::Fire) {
             continue;
         }
         let wrapped_diff = weapon.last_fire_tick - current_tick;
         if wrapped_diff.abs() <= weapon.cooldown as i16 {
-            // cooldown period - can't fire.
             if weapon.last_fire_tick == current_tick {
-                // logging because debugging latency edge conditions where
-                // inputs arrive on exact frame server replicates to you.
                 info!("Can't fire, fired this tick already! {current_tick:?}");
-            } else {
-                // info!("cooldown. {weapon:?} current_tick = {current_tick:?} wrapped_diff: {wrapped_diff}");
             }
             continue;
         }
         let prev_last_fire_tick = weapon.last_fire_tick;
         weapon.last_fire_tick = current_tick;
 
-        // bullet spawns just in front of the nose of the ship, in the direction the ship is facing,
-        // and inherits the speed of the ship.
         let bullet_spawn_offset = Vec2::Y * (2.0 + (SHIP_LENGTH + BULLET_SIZE) / 2.0);
 
         let bullet_origin = player_position.0 + player_rotation * bullet_spawn_offset;
         let bullet_linvel = player_rotation * (Vec2::Y * weapon.bullet_speed) + player_velocity.0;
 
-        // the default hashing algorithm uses the tick and component list. in order to disambiguate
-        // between two players spawning a bullet on the same tick, we add client_id to the mix.
-        let prespawned = PreSpawnedPlayerObject::default_with_salt(player.client_id.to_bits());
+        let prespawned = PreSpawned::default_with_salt(player.client_id.to_bits());
 
         let bullet_entity = commands
             .spawn((
@@ -253,7 +186,7 @@ pub fn shared_player_firing(
                     player.client_id,
                     bullet_origin,
                     bullet_linvel,
-                    (color.0.to_linear() * 5.0).into(), // bloom!
+                    (color.0.to_linear() * 5.0).into(),
                     current_tick,
                 ),
                 PhysicsBundle::bullet(),
@@ -265,13 +198,12 @@ pub fn shared_player_firing(
             weapon.last_fire_tick.0, player.client_id
         );
 
-        if identity.is_server() {
-            let replicate = server::Replicate {
-                sync: server::SyncTarget {
+        if is_server {
+            let replicate = Replicate {
+                sync: SyncTarget {
                     prediction: NetworkTarget::All,
-                    ..Default::default()
+                    ..default()
                 },
-                // make sure that all entities that are predicted are part of the same replication group
                 group: REPLICATION_GROUP,
                 ..default()
             };
@@ -280,25 +212,14 @@ pub fn shared_player_firing(
     }
 }
 
-// we want clients to predict the despawn due to TTL expiry, so this system runs on both client and server.
-// servers despawn without replicating that fact.
 pub fn lifetime_despawner(
     q: Query<(Entity, &Lifetime)>,
     mut commands: Commands,
-    tick_manager: Res<TickManager>,
-    identity: NetworkIdentity,
+    timeline: Single<&LocalTimeline>,
 ) {
     for (e, ttl) in q.iter() {
-        if (tick_manager.tick() - ttl.origin_tick) > ttl.lifetime {
-            // if ttl.origin_tick.wrapping_add(ttl.lifetime) > *tick_manager.tick() {
-            if identity.is_server() {
-                // info!("Despawning {e:?} without replication");
-                // commands.entity(e).despawn_without_replication(); // CRASH ?
-                commands.entity(e).remove::<server::Replicate>().despawn();
-            } else {
-                // info!("Despawning:lifetime {e:?}");
-                commands.entity(e).despawn_recursive();
-            }
+        if (timeline.tick() - ttl.origin_tick) > ttl.lifetime {
+            commands.entity(e).prediction_despawn();
         }
     }
 }
@@ -334,35 +255,26 @@ impl WallBundle {
     }
 }
 
-// Despawn bullets that collide with something.
-//
-// Generate a BulletHitEvent so we can modify scores, show visual effects, etc.
 pub fn process_collisions(
-    mut collision_event_reader: EventReader<Collision>,
+    collisions: Collisions,
     bullet_q: Query<(&BulletMarker, &ColorComponent, &Position)>,
     player_q: Query<&Player>,
     mut commands: Commands,
-    identity: NetworkIdentity,
+    timeline: Single<(&LocalTimeline, Has<Server>), Without<Client>>,
     mut hit_ev_writer: EventWriter<BulletHitEvent>,
 ) {
-    // when A and B collide, it can be reported as one of:
-    // * A collides with B
-    // * B collides with A
-    // which is why logic is duplicated twice here
-    for Collision(contacts) in collision_event_reader.read() {
-        if let Ok((bullet, col, bullet_pos)) = bullet_q.get(contacts.entity1) {
-            // despawn the bullet
-            if identity.is_server() {
-                commands
-                    .entity(contacts.entity1)
-                    .remove::<server::Replicate>()
-                    .despawn();
-            } else {
-                commands.entity(contacts.entity1).despawn_recursive();
+    let (_timeline, _is_server) = timeline.into_inner();
+    for contacts in collisions.iter() {
+        if let Ok((bullet, col, bullet_pos)) = bullet_q.get(contacts.collider1) {
+            if player_q.get(contacts.collider2).is_ok() {
+                // own bullet colliding with owner: ignore
+                continue;
             }
+            commands.entity(contacts.collider1).prediction_despawn();
             let victim_client_id = player_q
-                .get(contacts.entity2)
-                .map_or(None, |victim_player| Some(victim_player.client_id));
+                .get(contacts.collider2)
+                .ok()
+                .map(|victim_player| victim_player.client_id);
 
             let ev = BulletHitEvent {
                 bullet_owner: bullet.owner,
@@ -372,18 +284,15 @@ pub fn process_collisions(
             };
             hit_ev_writer.send(ev);
         }
-        if let Ok((bullet, col, bullet_pos)) = bullet_q.get(contacts.entity2) {
-            if identity.is_server() {
-                commands
-                    .entity(contacts.entity2)
-                    .remove::<server::Replicate>()
-                    .despawn();
-            } else {
-                commands.entity(contacts.entity2).despawn_recursive();
+        if let Ok((bullet, col, bullet_pos)) = bullet_q.get(contacts.collider2) {
+            if player_q.get(contacts.collider1).is_ok() {
+                continue;
             }
+            commands.entity(contacts.collider2).prediction_despawn();
             let victim_client_id = player_q
-                .get(contacts.entity1)
-                .map_or(None, |victim_player| Some(victim_player.client_id));
+                .get(contacts.collider1)
+                .ok()
+                .map(|victim_player| victim_player.client_id);
 
             let ev = BulletHitEvent {
                 bullet_owner: bullet.owner,

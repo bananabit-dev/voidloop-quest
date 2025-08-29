@@ -114,3 +114,41 @@ You can `cd ./out && python3 -m http.server` to test locally.
 
 ><small>⚠️ If Mac Docker builds fail with SIGKILL, you may need to increase RAM for Docker's VM
 </small>
+
+## Edgegap Lobby helper (non-blocking)
+
+A small async CLI is included to manage Edgegap lobbies via bevygap's async client.
+
+Build it:
+
+```
+cargo build -p lobby
+```
+
+Usage (env vars or flags):
+
+```
+export EDGEGAP_BASE_URL=https://api.edgegap.com
+export EDGEGAP_TOKEN=…
+
+# Create
+cargo run -p lobby -- create my-lobby
+
+# Deploy
+cargo run -p lobby -- deploy my-lobby
+
+# Get / List
+cargo run -p lobby -- get my-lobby
+cargo run -p lobby -- list
+
+# Terminate / Delete
+cargo run -p lobby -- terminate my-lobby
+cargo run -p lobby -- delete my-lobby
+```
+
+All operations are async (tokio + reqwest) and do not block threads.
+
+## WebGL2 renderer note
+
+This project targets Bevy 0.15. For WebGL2 on WASM, we enable Bevy's built-in `webgl2` feature
+(see `shared/Cargo.toml`), rather than the older `bevy_webgl2` plugin crate (which supports Bevy ^0.5 only).
