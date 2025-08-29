@@ -1,29 +1,17 @@
 use crate::FIXED_TIMESTEP_HZ;
-use lightyear::prelude::{AppComponentExt, ChannelDirection, ChannelMode, ChannelSettings, ReliableSettings, ClientId, Tick};
+use lightyear::prelude::*;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy::utils::Duration;
+use std::time::Duration;
 use leafwing_input_manager::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use lightyear::client::components::ComponentSyncMode;
-// use lightyear::client::interpolation::LinearInterpolator;
-use lightyear::inputs::leafwing::plugin::InputPlugin as LyLeafwingInputPlugin;
-use lightyear::inputs::client::ClientInputPlugin as LyClientInputPlugin;
-use lightyear::inputs::config::InputConfig as LyInputConfig;
-use lightyear::inputs::leafwing::input_message::LeafwingSequence;
 
 // use crate::color_from_id;
 
 pub const BULLET_SIZE: f32 = 1.5;
 pub const SHIP_WIDTH: f32 = 19.0;
 pub const SHIP_LENGTH: f32 = 32.0;
-
-// For prediction, we want everything entity that is predicted to be part of the same replication group
-// This will make sure that they will be replicated in the same message and that all the entities in the group
-// will always be consistent (= on the same tick)
-pub const REPLICATION_GROUP: ReplicationGroup = ReplicationGroup::new_id(1);
 
 // Bullet
 #[derive(Bundle)]
@@ -37,7 +25,7 @@ pub struct BulletBundle {
 
 impl BulletBundle {
     pub fn new(
-        owner: ClientId,
+        owner: PeerId,
         position: Vec2,
         velocity: Vec2,
         color: Color,
@@ -70,15 +58,7 @@ pub struct BallBundle {
 impl BallBundle {
     pub fn new(radius: f32, position: Vec2, color: Color) -> Self {
         let ball = BallMarker::new(radius);
-        let sync_target = SyncTarget {
-            prediction: NetworkTarget::All,
-            ..default()
-        };
-        let replicate = Replicate {
-            sync: sync_target,
-            group: REPLICATION_GROUP,
-            ..default()
-        };
+        let replicate = Replicate::to_clients(NetworkTarget::All);
         Self {
             position: Position(position),
             color: ColorComponent(color),
@@ -131,14 +111,14 @@ impl PhysicsBundle {
 // Components
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Reflect)]
 pub struct Player {
-    pub client_id: ClientId,
+    pub client_id: PeerId,
     pub nickname: String,
     pub rtt: Duration,
     pub jitter: Duration,
 }
 
 impl Player {
-    pub fn new(client_id: ClientId, nickname: String) -> Self {
+    pub fn new(client_id: PeerId, nickname: String) -> Self {
         Self {
             client_id,
             nickname,
@@ -153,10 +133,10 @@ impl Player {
 /// On the clients, we just use them for visual effects.
 #[derive(Event, Debug)]
 pub struct BulletHitEvent {
-    pub bullet_owner: ClientId,
+    pub bullet_owner: PeerId,
     pub bullet_color: Color,
-    /// if it struck a player, this is their clientid:
-    pub victim_client_id: Option<ClientId>,
+    /// if it struck a player, this is their peerid:
+    pub victim_client_id: Option<PeerId>,
     pub position: Vec2,
 }
 
@@ -185,11 +165,11 @@ impl BallMarker {
 
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BulletMarker {
-    pub owner: ClientId,
+    pub owner: PeerId,
 }
 
 impl BulletMarker {
-    pub fn new(owner: ClientId) -> Self {
+    pub fn new(owner: PeerId) -> Self {
         Self { owner }
     }
 }
@@ -241,7 +221,6 @@ pub struct ServerMetadata {
 }
 
 /// Just used to replicate resources, like ServerMetadata
-#[derive(Channel)]
 pub struct ResourceChannel;
 
 // Protocol
@@ -250,70 +229,68 @@ pub struct ProtocolPlugin;
 impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ServerMetadata>();
-        app.register_resource::<ServerMetadata>(ChannelDirection::ServerToClient);
+            
+        // Add channel
         app.add_channel::<ResourceChannel>(ChannelSettings {
             mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
             ..default()
-        });
+        })
+        .add_direction(NetworkDirection::ServerToClient);
 
-        app.add_plugins(LyLeafwingInputPlugin::<PlayerActions>::default());
+        // Add Leafwing input plugin
+        app.add_plugins(input::leafwing::InputPlugin::<PlayerActions>::default());
 
         // Player is synced as Simple, because we periodically update rtt ping stats
-        app.register_component::<Player>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Simple);
+        app.register_component::<Player>()
+            .add_prediction(PredictionMode::Simple)
+            .add_interpolation(InterpolationMode::Simple);
 
-        app.register_component::<ColorComponent>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Once);
+        app.register_component::<ColorComponent>()
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
-        app.register_component::<Name>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Once);
+        app.register_component::<Name>()
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
-        app.register_component::<BallMarker>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Once);
+        app.register_component::<BallMarker>()
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
-        app.register_component::<BulletMarker>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Once);
+        app.register_component::<BulletMarker>()
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
-        app.register_component::<Lifetime>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Once);
+        app.register_component::<Lifetime>()
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
-        app.register_component::<Score>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Simple);
+        app.register_component::<Score>()
+            .add_prediction(PredictionMode::Simple)
+            .add_interpolation(InterpolationMode::Simple);
 
         // Fully replicated, but not visual, so no need for lerp/corrections:
+        app.register_component::<LinearVelocity>()
+            .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full);
 
-        app.register_component::<LinearVelocity>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Full);
+        app.register_component::<AngularVelocity>()
+            .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full);
 
-        app.register_component::<AngularVelocity>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Full);
+        app.register_component::<Weapon>()
+            .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full);
 
-        app.register_component::<Weapon>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Full);
+        // Position and Rotation have interpolation functions
+        app.register_component::<Position>()
+            .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full)
+            .add_linear_interpolation_fn();
 
-        // Position and Rotation have a `correction_fn` set, which is used to smear rollback errors
-        // over a few frames, just for the rendering part in postudpate.
-        //
-        // They also set `interpolation_fn` which is used by the VisualInterpolationPlugin to smooth
-        // out rendering between fixedupdate ticks.
-        app.register_component::<Position>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Full)
-            .add_interpolation_fn(position::lerp)
-            .add_correction_fn(position::lerp);
-
-        app.register_component::<Rotation>(ChannelDirection::ServerToClient)
-            .add_prediction(ComponentSyncMode::Full)
-            .add_interpolation_fn(rotation::lerp)
-            .add_correction_fn(rotation::lerp);
-
-        // Local adapter for latest Leafwing inputs -> Lightyear client input pipeline
-        let input_cfg: LyInputConfig<LeafwingSequence<PlayerActions>> = LyInputConfig {
-            packet_redundancy: 10,
-            send_interval: Duration::default(),
-            #[cfg(feature = "prediction")] rebroadcast_inputs: true,
-            marker: core::marker::PhantomData,
-            #[cfg(feature = "interpolation")] lag_compensation: false,
-        };
-        app.add_plugins(LyClientInputPlugin::<LeafwingSequence<PlayerActions>>::new(input_cfg));
+        app.register_component::<Rotation>()
+            .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full)
+            .add_linear_interpolation_fn();
     }
 }

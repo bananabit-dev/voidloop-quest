@@ -1,22 +1,54 @@
 use bevy::log::{Level, LogPlugin};
 use bevy::prelude::*;
-use lightyear::prelude::server::ServerTransport;
-use lightyear::server::config::ServerConfig;
+use bevy::state::app::StatesPlugin;
+use bevy::hierarchy::HierarchyPlugin;
+use lightyear::prelude::server::*;
+use lightyear::prelude::*;
+use lightyear::webtransport::server::Identity;
 use shared::prelude::*;
+use std::net::{Ipv4Addr, SocketAddr};
+use std::time::Duration;
 
 mod server_plugin;
 use server_plugin::*;
 
-// This needs to be passed to the matchmaker service as a cli flag too, since it's needed to
-// construct the ConnectTokens.
-// TODO this should be read from ENV or flag or file.. or maybe we deterministically generate it
-//      based on the cert hash, which we already send to the matchmaker?
-pub const PRIVATE_KEY: [u8; PRIVATE_KEY_BYTES] = [
+// Private key for netcode authentication
+// This should be read from ENV in production
+pub const PRIVATE_KEY: [u8; 32] = [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 ];
 
 fn main() {
     let mut app = App::new();
+
+    // Display the logo at startup
+    println!(r#"
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                                                              ║
+    ║     ██╗   ██╗ ██████╗ ██╗██████╗                            ║
+    ║     ██║   ██║██╔═══██╗██║██╔══██╗                           ║
+    ║     ██║   ██║██║   ██║██║██║  ██║                           ║
+    ║     ╚██╗ ██╔╝██║   ██║██║██║  ██║                           ║
+    ║      ╚████╔╝ ╚██████╔╝██║██████╔╝                           ║
+    ║       ╚═══╝   ╚═════╝ ╚═╝╚═════╝                            ║
+    ║                                                              ║
+    ║     ██╗      ██████╗  ██████╗ ██████╗                       ║
+    ║     ██║     ██╔═══██╗██╔═══██╗██╔══██╗                      ║
+    ║     ██║     ██║   ██║██║   ██║██████╔╝                      ║
+    ║     ██║     ██║   ██║██║   ██║██╔═══╝                       ║
+    ║     ███████╗╚██████╔╝╚██████╔╝██║                           ║
+    ║     ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝                           ║
+    ║                                                              ║
+    ║      ██████╗ ██╗   ██╗███████╗███████╗████████╗             ║
+    ║     ██╔═══██╗██║   ██║██╔════╝██╔════╝╚══██╔══╝             ║
+    ║     ██║   ██║██║   ██║█████╗  ███████╗   ██║                ║
+    ║     ██║▄▄ ██║██║   ██║██╔══╝  ╚════██║   ██║                ║
+    ║     ╚██████╔╝╚██████╔╝███████╗███████║   ██║                ║
+    ║      ╚══▀▀═╝  ╚═════╝ ╚══════╝╚══════╝   ╚═╝                ║
+    ║                                                              ║
+    ║                  🚀 Server Starting... 🚀                    ║
+    ╚══════════════════════════════════════════════════════════════╝
+    "#);
 
     #[cfg(feature = "gui")]
     app.add_plugins(
@@ -30,144 +62,162 @@ fn main() {
     app.add_plugins((
         MinimalPlugins,
         HierarchyPlugin,
-        bevy::state::app::StatesPlugin,
+        StatesPlugin,
     ));
 
     app.add_plugins(LogPlugin {
         level: Level::INFO,
         filter: "bevy_render=info,bevy_ecs=warn".to_string(),
-        ..default() // filter: "wgpu=error,bevy_render=info,bevy_ecs=warn".to_string(),
-                    // update_subscriber: Some(add_log_layer),
+        ..default()
     });
 
-    info!("bevygap-spaceships server main() ..");
+    info!("🚀 Void Loop Quest Server starting...");
     info!("⭐️ Build time: {}", env!("VERGEN_BUILD_TIMESTAMP"));
     info!("⭐️ Git desc: {}", env!("VERGEN_GIT_DESCRIBE"));
     info!("⭐️ Git sha: {}", env!("VERGEN_GIT_SHA"));
     info!("⭐️ Git commit @ {}", env!("VERGEN_GIT_COMMIT_TIMESTAMP"));
 
-    // configure the network configuration
-    let (net_config, cert_digest) = build_server_netcode_config();
-
-    // we can listen on multiple interfaces, or steam+wt+udp etc
-    let net_configs = vec![net_config];
-
-    app.add_plugins(server::ServerPlugins {
-        config: ServerConfig {
-            shared: shared::shared_config(),
-            net: net_configs,
-            replication: ReplicationConfig {
-                send_interval: SERVER_REPLICATION_INTERVAL,
-                ..default()
-            },
-            ..default()
-        },
+    // Read private key from environment or use default
+    let private_key = parse_private_key_from_env().unwrap_or_else(|| {
+        warn!("LIGHTYEAR_PRIVATE_KEY not set, using dummy key");
+        PRIVATE_KEY
     });
 
+    // Spawn the server entity with all necessary components
+    let server_entity = app.world_mut().spawn((
+        Server::default(),
+        Name::from("Server"),
+    )).id();
+
+    // Configure server based on features
+    #[cfg(feature = "bevygap")]
+    {
+        info!("🔐 Configuring server for Edgegap deployment with WebTransport");
+        configure_webtransport_server(&mut app, server_entity, private_key);
+    }
+
+    #[cfg(not(feature = "bevygap"))]
+    {
+        info!("🔐 Configuring local server with WebTransport");
+        configure_local_server(&mut app, server_entity, private_key);
+    }
+
+    // Add shared and server plugins
     app.add_plugins(BevygapSpaceshipsSharedPlugin);
-    app.add_plugins(BevygapSpaceshipsServerPlugin { cert_digest });
+    app.add_plugins(BevygapSpaceshipsServerPlugin);
+
+    // Start the server
+    app.add_systems(Startup, start_server);
 
     app.run();
 }
 
-// TODO move the self-signed cert generation to LY
-pub fn build_server_netcode_config() -> (server::NetConfig, String) {
-    let conditioner = None;
-
-    /*
-    Generates a self-signed certificate and private key for new identity.
-
-    The certificate conforms to the W3C WebTransport specifications as follows:
-
-    The certificate MUST be an X.509v3 certificate as defined in RFC5280.
-    The key used in the Subject Public Key field MUST be one of the allowed public key algorithms. This function uses the ECDSA P-256 algorithm.
-    The current time MUST be within the validity period of the certificate as defined in Section 4.1.2.5 of RFC5280.
-    The total length of the validity period MUST NOT exceed two weeks.
-     */
+fn configure_webtransport_server(app: &mut App, server_entity: Entity, private_key: [u8; 32]) {
     let mut sans = vec![
         "localhost".to_string(),
         "127.0.0.1".to_string(),
         "::1".to_string(),
     ];
-    // Are we running on edgegap?
+
+    // Check if running on Edgegap
     if let Ok(public_ip) = std::env::var("ARBITRIUM_PUBLIC_IP") {
         info!("🔐 SAN += ARBITRIUM_PUBLIC_IP: {}", public_ip);
         sans.push(public_ip);
         sans.push("*.pr.edgegap.net".to_string());
     }
-    // generic env to add domains and ips to SAN list:
-    // SELF_SIGNED_SANS="example.org,example.com,127.1.1.1"
+
+    // Additional SANs from environment
     if let Ok(san) = std::env::var("SELF_SIGNED_SANS") {
         info!("🔐 SAN += SELF_SIGNED_SANS: {}", san);
         sans.extend(san.split(',').map(|s| s.to_string()));
     }
+
     info!("🔐 Creating self-signed certificate with SANs: {:?}", sans);
-    let certificate = server::Identity::self_signed(sans).unwrap();
-    // newer version of wtransport has this API:
-    // let identity = server::Identity::self_signed_builder()
-    //     .subject_alt_names(&["localhost", "127.0.0.1", "::1"])
-    //     .from_now_utc()
-    //     .validity_days(14)
-    //     .build()
-    //     .unwrap();
-
-    // We could load certs from files if needed. This would make more sense for a deployment
-    // where you own the domain name and have a certificate management solution in place,
-    // for example with LetsEncrypt.
-    //
-    // this is async because we need to load the certificate from io
-    // we need async_compat because wtransport expects a tokio reactor
-    // let certificate = IoTaskPool::get()
-    //     .scope(|s| {
-    //         s.spawn(Compat::new(async {
-    //             server::Identity::load_pemfiles("./certificates/cert.pem", "./certificates/key.pem")
-    //                 .await
-    //                 .unwrap()
-    //         }));
-    //     })
-    //     .pop()
-    //     .unwrap();
-
-    let digest = certificate.certificate_chain().as_slice()[0].hash();
-    let digest_str = format!("{}", digest);
+    
+    // Generate self-signed certificate
+    let identity = Identity::self_signed(sans)
+        .expect("Failed to create self-signed certificate");
+    
+    let digest = identity.certificate_chain().as_slice()[0].hash();
     info!("🔐 Certificate digest: {}", digest);
 
-    // in edgegap or other cloud environments, or even just docker containers, you don't generally
-    // know what your public IP is, so we just listen on everything and let the network
-    // layer (docker, EC2 NAT, whatever) hook you up.
-    let listen_addr = format!("0.0.0.0:{SERVER_PORT}").parse().unwrap();
+    let server_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), SERVER_PORT);
+    info!("📡 Listening on {}", server_addr);
 
-    info!("Listening on {listen_addr:?}");
+    // Add components to server entity
+    app.world_mut().entity_mut(server_entity).insert((
+        LocalAddr(server_addr),
+        WebTransportServerIo { certificate: identity },
+        NetcodeServer::new(NetcodeConfig {
+            protocol_id: PROTOCOL_ID,
+            private_key,
+            ..Default::default()
+        }),
+        Link::new(None),
+    ));
+}
 
-    let transport_config = ServerTransport::WebTransportServer {
-        server_addr: listen_addr,
-        certificate,
+fn configure_local_server(app: &mut App, server_entity: Entity, private_key: [u8; 32]) {
+    let sans = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    
+    info!("🔐 Creating self-signed certificate for local development");
+    
+    let identity = Identity::self_signed(sans)
+        .expect("Failed to create self-signed certificate");
+    
+    let digest = identity.certificate_chain().as_slice()[0].hash();
+    info!("🔐 Certificate digest: {}", digest);
+
+    let server_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), SERVER_PORT);
+    info!("📡 Listening on {}", server_addr);
+
+    // Add components to server entity
+    app.world_mut().entity_mut(server_entity).insert((
+        LocalAddr(server_addr),
+        WebTransportServerIo { certificate: identity },
+        NetcodeServer::new(NetcodeConfig {
+            protocol_id: PROTOCOL_ID,
+            private_key,
+            ..Default::default()
+        }),
+        Link::new(None),
+    ));
+}
+
+fn start_server(mut commands: Commands, server: Query<Entity, With<Server>>) {
+    if let Ok(server_entity) = server.get_single() {
+        info!("🚀 Starting server...");
+        commands.trigger_targets(Start, server_entity);
+    }
+}
+
+/// Parse private key from environment variable
+fn parse_private_key_from_env() -> Option<[u8; 32]> {
+    let Ok(key_str) = std::env::var("LIGHTYEAR_PRIVATE_KEY") else {
+        return None;
     };
+    
+    let private_key: Vec<u8> = key_str
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == ',')
+        .collect::<String>()
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            s.parse::<u8>()
+                .expect("Failed to parse number in private key")
+        })
+        .collect();
 
-    let io_config = server::IoConfig {
-        transport: transport_config,
-        conditioner,
-        compression: CompressionConfig::None,
-    };
+    if private_key.len() != 32 {
+        panic!("Private key must contain exactly 32 numbers, got {}", private_key.len());
+    }
 
-    let key = read_lightyear_private_key_from_env().unwrap_or_else(|| {
-        warn!("LIGHTYEAR_PRIVATE_KEY not set, using dummy key");
-        DUMMY_PRIVATE_KEY
-    });
-
-    // this is to aid debugging, silly to dump it to the logs most of the time.
-    // info!("🔐 Using private key: {:?}", key);
-
-    let netcode_config = server::NetcodeConfig::default()
-        .with_protocol_id(PROTOCOL_ID)
-        .with_key(key);
-
-    // netcode_config.connection_request_handler =
-    (
-        server::NetConfig::Netcode {
-            config: netcode_config,
-            io: io_config,
-        },
-        digest_str,
-    )
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&private_key);
+    Some(bytes)
 }

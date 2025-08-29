@@ -5868,6 +5868,7 @@ dependencies = [
  "bevy_reflect 0.16.1",
  "lightyear_connection",
  "lightyear_core",
+ "lightyear_interpolation",
  "lightyear_link",
  "lightyear_messages",
  "lightyear_prediction",

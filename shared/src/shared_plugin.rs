@@ -3,10 +3,9 @@ use bevy::{ecs::query::QueryData, prelude::*};
 use bevy::prelude::Single;
 use crate::protocol_plugin::{
     PlayerActions, BulletBundle, PhysicsBundle, ColorComponent, BulletHitEvent, Player,
-    BulletMarker, Lifetime, REPLICATION_GROUP, SHIP_LENGTH, BULLET_SIZE, Weapon, ProtocolPlugin,
+    BulletMarker, Lifetime, SHIP_LENGTH, BULLET_SIZE, Weapon, ProtocolPlugin,
 };
-use lightyear::prelude::PredictionDespawnCommandsExt;
-use lightyear::prelude::{Client, Server, LocalTimeline, Replicate, SyncTarget, NetworkTarget, PreSpawned, Controlled, ClientId};
+use lightyear::prelude::*;
 
 pub struct BevygapSpaceshipsSharedPlugin;
 
@@ -52,7 +51,7 @@ impl Plugin for BevygapSpaceshipsSharedPlugin {
 }
 
 // Generate pseudo-random color from id
-pub fn color_from_id(client_id: ClientId) -> Color {
+pub fn color_from_id(client_id: PeerId) -> Color {
     let h = (((client_id.to_bits().wrapping_mul(30)) % 360) as f32) / 360.0;
     let s = 1.0;
     let l = 0.5;
@@ -199,14 +198,7 @@ pub fn shared_player_firing(
         );
 
         if is_server {
-            let replicate = Replicate {
-                sync: SyncTarget {
-                    prediction: NetworkTarget::All,
-                    ..default()
-                },
-                group: REPLICATION_GROUP,
-                ..default()
-            };
+            let replicate = Replicate::to_clients(NetworkTarget::All);
             commands.entity(bullet_entity).insert(replicate);
         }
     }
@@ -282,7 +274,7 @@ pub fn process_collisions(
                 position: bullet_pos.0,
                 bullet_color: col.0,
             };
-            hit_ev_writer.send(ev);
+            hit_ev_writer.write(ev);
         }
         if let Ok((bullet, col, bullet_pos)) = bullet_q.get(contacts.collider2) {
             if player_q.get(contacts.collider1).is_ok() {
@@ -300,7 +292,7 @@ pub fn process_collisions(
                 position: bullet_pos.0,
                 bullet_color: col.0,
             };
-            hit_ev_writer.send(ev);
+            hit_ev_writer.write(ev);
         }
     }
 }

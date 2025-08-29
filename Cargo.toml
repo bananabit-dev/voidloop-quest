@@ -32,7 +32,7 @@ debug = false
 
 [workspace.dependencies]
 # lightyear ver must match exactly with bevygap's version!
-lightyear = {git = "https://github.com/bananabit-dev/lightyear.git", default-features = false, features = ["webtransport", "leafwing", "avian2d", "server", "client", "prediction", "netcode"]}
+lightyear = {git = "https://github.com/bananabit-dev/lightyear.git", default-features = false, features = ["webtransport", "leafwing", "avian2d", "server", "client", "prediction", "interpolation", "netcode", "replication"]}
 avian2d   = { version = "0.3", default-features = false, features = ["serialize", "default-collider", "enhanced-determinism", "2d", "f32", "parry-f32"] }
 bevy = {version = "0.16", default-features = false}
 bevy_ecs = "0.16"
