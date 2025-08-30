@@ -1,0 +1,27 @@
+name: Fly Deploy (client)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy client to Fly.io    
+    environment: main
+    runs-on: ubuntu-latest
+    concurrency: client-deploy-group
+    defaults:
+      run:
+        working-directory: voidloop-quest/client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only --app voidloop-quest
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

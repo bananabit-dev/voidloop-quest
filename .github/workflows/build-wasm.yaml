@@ -17,11 +17,12 @@ on:
 # Remember to set your DOCKER_PASSWORD secret environment variable on
 # github's settings page for your repo, so you can auth with the edgegap registry.
 env:
-  IMAGE_NAME: "metabrew/bevygap-spaceships-wasm"
+  IMAGE_NAME: "bananabit/voidloop-quest-wasm"
 
 jobs:
   build-and-push-wasm:
     runs-on: ubuntu-latest
+    environment: main
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
