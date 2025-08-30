@@ -1,11 +1,17 @@
 use crate::screens;
+use lightyear::client::prediction::TickManager;
+use lightyear::inputs::leafwing::input_buffer::InputBuffer;
+use lightyear::prelude::client::event::ConnectEvent;
+
 use bevy::prelude::*;
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::*;
 use leafwing_input_manager::prelude::*;
-use lightyear::prelude::client::*;
+use lightyear::prelude::client::netcode::ClientConnection;
 use lightyear::prelude::*;
-use shared::prelude::*;
+use lightyear::prelude::client::*;
+use lightyear::core::timeline::LocalTimeline;
+use lightyear::inputs::leafwing::input_buffer::InputBuffer;
 
 /// The game name sent to the matchmaker when requesting a server to play on
 pub const GAME_NAME: &str = "bevygap-spaceships";
@@ -38,37 +44,34 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
             );
         }
 
-        app.observe(connect_client_observer);
+        app.add_observer(connect_client_observer);
 
         app.add_systems(
             PreUpdate,
-            handle_connection
-                .after(MainSet::Receive)
-                .before(PredictionSet::SpawnPrediction),
+            handle_connection,
         );
         // all actions related-system that can be rolled back should be in FixedUpdate schedule
         app.add_systems(
             FixedUpdate,
             (
                 player_movement,
-                // we don't spawn bullets during rollback.
-                // if we have the inputs early (so not in rb) then we spawn,
-                // otherwise we rely on normal server replication to spawn them
                 shared_player_firing.run_if(not(is_in_rollback)),
-            )
-                .chain()
-                .in_set(FixedSet::Main),
+            ),
         );
-        app.add_systems(
-            Update,
-            (add_ball_physics, add_bullet_physics, handle_new_player),
-        );
-        app.add_systems(
-            FixedUpdate,
-            handle_hit_event
-                .run_if(on_event::<BulletHitEvent>)
-                .after(process_collisions),
-        );
+    app.add_systems(
+        Update,
+        (
+            add_ball_physics,
+            add_bullet_physics,
+            handle_new_player
+        )
+    );
+    app.add_systems(
+        Update,
+        handle_hit_event
+            .run_if(on_event::<BulletHitEvent>)
+            .after(process_collisions),
+    );
 
         app.add_systems(
             Update,
@@ -186,48 +189,42 @@ fn render_server_metadata(mut commands: Commands, metadata: Res<ServerMetadata>)
     // logs will include the build info: timestamp and git sha of server you've connected to.
     // but this isn't shown in the UI.
     info!("Got server metadata: {:?}", metadata);
-    commands.spawn(
-        TextBundle::from_section(
-            format!("Server {} @ {}", metadata.fqdn, metadata.location),
-            TextStyle {
-                font_size: 16.0,
-                color: bevy::color::palettes::css::WHITE.into(),
+    commands
+        .spawn((
+            Text::default(),
+            TextFont::from_font_size(16.0),
+            TextColor(bevy::color::palettes::css::WHITE.into()),
+            Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(5.0),
+                left: Val::Px(5.0),
                 ..default()
             },
-        )
-        .with_style(Style {
-            position_type: PositionType::Absolute,
-            top: Val::Px(5.0),
-            left: Val::Px(5.0),
-            ..default()
-        }),
-    );
+        ))
+        .with_children(|p| {
+            p.spawn(TextSpan::new(format!(
+                "Server {} @ {}",
+                metadata.fqdn, metadata.location
+            )));
+        });
 }
 
 /// Listen for events to know when the client is connected, and spawn a text entity
 /// to display the client id
 pub(crate) fn handle_connection(
     mut commands: Commands,
-    mut connection_event: EventReader<client::ConnectEvent>,
+    mut connection_event: EventReader<ConnectEvent>,
 ) {
     for event in connection_event.read() {
         let client_id = event.client_id();
-        commands.spawn(
-            TextBundle::from_section(
-                format!("Client {}", client_id),
-                TextStyle {
-                    font_size: 12.0,
-                    color: Color::WHITE,
-                    ..default()
-                },
-            )
-            .with_style(Style {
-                position_type: PositionType::Absolute,
-                top: Val::Px(25.0),
-                left: Val::Px(5.0),
-                ..default()
-            }),
-        );
+    commands.spawn((
+        Text::default(),
+        TextFont::from_font_size(12.0),
+        TextColor(Color::WHITE),
+        Style { position_type: PositionType::Absolute, top: Val::Px(25.0), left: Val::Px(5.0), ..default() },
+    )).with_children(|p|{
+        p.spawn(TextSpan::new(format!("Client {}", client_id)));
+    });
     }
 }
 
@@ -311,52 +308,30 @@ fn handle_hit_event(
 
 // only apply movements to predicted entities
 fn player_movement(
-    mut q: Query<
-        (
-            &ActionState<PlayerActions>,
-            &InputBuffer<PlayerActions>,
-            ApplyInputsQuery,
-        ),
-        (With<Player>, With<Predicted>),
-    >,
-    tick_manager: Res<TickManager>,
-    rollback: Option<Res<Rollback>>,
+    mut q: Query<(
+        &ActionState<PlayerActions>,
+        &InputBuffer<PlayerActions>,
+        ApplyInputsQuery,
+    ), (With<Player>, With<Predicted>)>,
+    timeline: Single<&LocalTimeline>,
 ) {
-    // max number of stale inputs to predict before default inputs used
-    const MAX_STALE_TICKS: u16 = 6;
-    // get the tick, even if during rollback
-    let tick = rollback
-        .as_ref()
-        .map(|rb| tick_manager.tick_or_rollback_tick(rb))
-        .unwrap_or(tick_manager.tick());
+    // derive tick from local timeline (works across rollback)
+    let tick = timeline.tick();
 
     for (action_state, input_buffer, mut aiq) in q.iter_mut() {
-        // is the current ActionState for real?
         if input_buffer.get(tick).is_some() {
-            // Got an exact input for this tick, staleness = 0, the happy path.
             apply_action_state_to_player_movement(action_state, 0, &mut aiq, tick);
             continue;
         }
-
-        // if the true input is missing, this will be leftover from a previous tick, or the default().
         if let Some((prev_tick, prev_input)) = input_buffer.get_last_with_tick() {
             let staleness = (tick - prev_tick).max(0) as u16;
+            const MAX_STALE_TICKS: u16 = 6;
             if staleness > MAX_STALE_TICKS {
-                // input too stale, apply default input (ie, nothing pressed)
-                apply_action_state_to_player_movement(
-                    &ActionState::default(),
-                    staleness,
-                    &mut aiq,
-                    tick,
-                );
+                apply_action_state_to_player_movement(&ActionState::default(), staleness, &mut aiq, tick);
             } else {
-                // apply a stale input within our acceptable threshold.
-                // we could use the staleness to decay movement forces as desired.
                 apply_action_state_to_player_movement(prev_input, staleness, &mut aiq, tick);
             }
         } else {
-            // no inputs in the buffer yet, can happen during initial connection.
-            // apply the default input (ie, nothing pressed)
             apply_action_state_to_player_movement(action_state, 0, &mut aiq, tick);
         }
     }

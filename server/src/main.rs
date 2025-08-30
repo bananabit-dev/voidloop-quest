@@ -1,6 +1,5 @@
 use bevy::log::{Level, LogPlugin};
 use bevy::prelude::*;
-use bevy::state::app::StatesPlugin;
 use lightyear::prelude::server::*;
 use lightyear::prelude::*;
 use shared::prelude::*;
@@ -55,17 +54,17 @@ fn main() {
             .disable::<LogPlugin>(),
     );
 
-    #[cfg(not(feature = "gui"))]
-    app.add_plugins((
-        MinimalPlugins,
-        StatesPlugin,
-    ));
-
     app.add_plugins(LogPlugin {
         level: Level::INFO,
         filter: "bevy_render=info,bevy_ecs=warn".to_string(),
         ..default()
     });
+
+    // Add lightyear server plugins (IO, connection, replication, prediction, etc.) with a non-zero fixed timestep
+    let tick_duration = core::time::Duration::from_secs_f64(1.0 / FIXED_TIMESTEP_HZ);
+    #[cfg(not(feature = "gui"))]
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(lightyear::prelude::server::ServerPlugins { tick_duration });
 
     info!("🚀 Void Loop Quest Server starting...");
     info!("⭐️ Build time: {}", env!("VERGEN_BUILD_TIMESTAMP"));

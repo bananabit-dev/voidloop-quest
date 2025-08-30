@@ -31,10 +31,7 @@ impl Plugin for BevygapSpaceshipsServerPlugin {
                 .chain(),
         );
         
-        app.add_systems(
-            Update,
-            update_player_metrics.run_if(on_timer(Duration::from_secs(1))),
-        );
+app.add_systems(Update, update_player_metrics);
 
         app.add_systems(
             FixedUpdate,

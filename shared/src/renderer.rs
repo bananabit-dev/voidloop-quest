@@ -21,7 +21,7 @@ use lightyear::inputs::leafwing::input_buffer::InputBuffer;
 use lightyear::prelude::client::*;
 // use lightyear::shared::tick_manager;
 // use lightyear::shared::tick_manager::Tick;
-use lightyear::shared::tick_manager::TickManager;
+use lightyear::client::prediction::TickManager;
 use lightyear::transport::io::IoDiagnosticsPlugin;
 use lightyear::{
     client::{
@@ -42,7 +42,7 @@ impl Plugin for BLEMRendererPlugin {
         // app.insert_resource(ClearColor(css::DARK_GRAY.into()));
         let draw_shadows = false;
         // draw last to ensure all the interpolation/syncing stuff has happened
-        app.add_systems(
+    app.add_systems(
             Last,
             (
                 add_player_label,
@@ -51,10 +51,12 @@ impl Plugin for BLEMRendererPlugin {
                 draw_confirmed_shadows.run_if(move || draw_shadows),
                 draw_predicted_entities,
                 draw_confirmed_entities.run_if(is_server),
-                draw_explosions,
             )
                 .chain(),
         );
+
+        // explosions can run on either schedule; they only read Transform
+        app.add_systems(Last, draw_explosions);
 
         app.add_systems(FixedPreUpdate, insert_bullet_mesh);
 

@@ -1,11 +1,15 @@
 use crate::screens::*;
+use bevy::prelude::*;
+use bevy::ui::{Style, PositionType, Val, UiRect, AlignItems, JustifyContent, FlexDirection, BorderColor, BorderRadius, BackgroundColor, Interaction, ButtonBundle, NodeBundle};
+
+
 use bevy::{color::palettes::css, prelude::*};
-use lightyear::prelude::client::*;
+use lightyear::prelude::client::event::ConnectEvent;
 use lightyear::prelude::*;
 use shared::prelude::*;
 
 pub(super) fn plugin(app: &mut App) {
-    app.observe(update_connect_status_text_observer);
+    app.add_observer(update_connect_status_text_observer);
     app.add_systems(OnEnter(Screen::Connect), spawn_connect_screen);
     // systems that only run in Connect state.
     app.add_systems(
@@ -27,8 +31,8 @@ fn continue_to_gameplay_screen(mut next_screen: ResMut<NextState<Screen>>) {
     next_screen.set(Screen::Gameplay);
 }
 
-fn connected_to_server(connection: Res<client::ClientConnection>) -> bool {
-    matches!(connection.state(), ConnectionState::Connected)
+fn connected_to_server(_connection: Option<Res<client::Connected>>) -> bool {
+    _connection.is_some()
 }
 
 // We need a "Connect Now" button, and a status text to update during connection.
@@ -45,26 +49,23 @@ const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
 
 fn spawn_connect_screen(mut commands: Commands, _asset_server: ResMut<AssetServer>) {
     info!("spawn_connect_screen");
-    let text_style = TextStyle {
+    let _text_style = TextStyle {
         font_size: 30.0,
         ..default()
     };
 
     commands
-        .spawn((
-            StateScoped(Screen::Connect),
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    flex_direction: FlexDirection::Column,
-                    ..default()
-                },
+        .spawn((StateScoped(Screen::Connect), NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
                 ..default()
             },
-        ))
+            ..default()
+        }))
         .with_children(|parent| {
             parent
                 .spawn((
@@ -74,14 +75,9 @@ fn spawn_connect_screen(mut commands: Commands, _asset_server: ResMut<AssetServe
                             width: Val::Px(150.0),
                             height: Val::Px(65.0),
                             border: UiRect::all(Val::Px(5.0)),
-                            // horizontally center child text
                             justify_content: JustifyContent::Center,
-                            // vertically center child text
                             align_items: AlignItems::Center,
-                            margin: UiRect {
-                                bottom: Val::Px(20.0),
-                                ..default()
-                            },
+                            margin: UiRect { bottom: Val::Px(20.0), ..default() },
                             ..default()
                         },
                         border_color: BorderColor(Color::BLACK),
@@ -91,20 +87,16 @@ fn spawn_connect_screen(mut commands: Commands, _asset_server: ResMut<AssetServe
                     },
                 ))
                 .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "Connect",
-                        TextStyle {
-                            font_size: 22.0,
-                            color: Color::srgb(0.9, 0.9, 0.9),
-                            ..default()
-                        },
-                    ));
+                    parent.spawn((Text::default(), TextFont::from_font_size(22.0), TextColor(Color::srgb(0.9,0.9,0.9)),)).with_children(|p|{
+                        p.spawn(TextSpan::new("Connect"));
+                    });
                 });
 
-            parent.spawn((
-                ConnectUIText,
-                TextBundle::from_sections([TextSection::new("Standing By", text_style.clone())]),
-            ));
+            parent
+                .spawn((ConnectUIText, Text::default(), TextFont::from_font_size(30.0)))
+                .with_children(|p| {
+                    p.spawn(TextSpan::new("Standing By"));
+                });
         });
 }
 
@@ -117,10 +109,16 @@ pub(crate) struct ConnectToServerRequest;
 
 fn update_connect_status_text_observer(
     trigger: Trigger<ConnectStatusText>,
-    mut q: Query<&mut Text, With<ConnectUIText>>,
+    q_roots: Query<&Children, With<ConnectUIText>>,
+    mut q_spans: Query<&mut TextSpan>,
 ) {
-    if let Ok(mut text) = q.get_single_mut() {
-        text.sections[0].value.clone_from(&trigger.event().0);
+    if let Ok(children) = q_roots.get_single() {
+        for child in children.iter() {
+            if let Ok(mut span) = q_spans.get_mut(*child) {
+                span.0.clone_from(&trigger.event().0);
+                break;
+            }
+        }
     }
 }
 
