@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # Web client - serves the WASM game
+  client:
+    build:
+      context: ..
+      dockerfile: voidloop-quest/client/Dockerfile
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - voidloop-net
+
+  # Game server - handles multiplayer game logic
+  server:
+    build:
+      context: ..
+      dockerfile: voidloop-quest/server/Dockerfile
+    ports:
+      - "6420:6420/udp"
+      - "6421:6421"
+      - "9090:9090"  # Metrics endpoint
+    environment:
+      - RUST_LOG=info,voidloop=debug
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=6420
+      - TRANSPORT_PORT=6421
+      - MAX_PLAYERS=16
+      - TICK_RATE=60
+      # Uncomment and configure for lobby integration
+      # - LOBBY_URL=http://lobby:3000
+      # - LOBBY_API_KEY=${LOBBY_API_KEY}
+    restart: unless-stopped
+    networks:
+      - voidloop-net
+    # Uncomment if using lobby
+    # depends_on:
+    #   - lobby
+
+  # Optional: Lobby server for matchmaking (BevyGap)
+  # lobby:
+  #   build:
+  #     context: ..
+  #     dockerfile: voidloop-quest/tools/lobby/Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - DATABASE_URL=postgres://voidloop:voidloop@db:5432/lobby
+  #     - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
+  #     - RUST_LOG=info
+  #   restart: unless-stopped
+  #   networks:
+  #     - voidloop-net
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+
+  # Optional: PostgreSQL database for lobby
+  # db:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     - POSTGRES_USER=voidloop
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD:-voidloop}
+  #     - POSTGRES_DB=lobby
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   networks:
+  #     - voidloop-net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U voidloop"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Optional: Monitoring with Prometheus
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus_data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   ports:
+  #     - "9091:9090"
+  #   restart: unless-stopped
+  #   networks:
+  #     - voidloop-net
+
+  # Optional: Grafana for visualization
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #     - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+  #   ports:
+  #     - "3001:3000"
+  #   restart: unless-stopped
+  #   networks:
+  #     - voidloop-net
+  #   depends_on:
+  #     - prometheus
+
+networks:
+  voidloop-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

@@ -1,1 +1,31 @@
-target/debug
+# Docker build context ignore rules for work/voidloop-quest
+
+# Git and VCS
+.git
+.gitignore
+.gitattributes
+
+# Cargo build artifacts
+**/target
+**/.fingerprint
+**/*.rlib
+**/*.rmeta
+Cargo.lock
+
+# Editors/OS
+.vscode
+.idea
+**/.DS_Store
+
+# Node/npm (if any)
+**/node_modules
+
+# Temp files
+**/*.swp
+**/*.swo
+**/*~
+**/*.tmp
+
+# CI and docs not needed for builds
+.github
+scripts

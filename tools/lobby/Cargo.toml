@@ -9,7 +9,7 @@ publish.workspace = true
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { version = "1" }
-edgegap_async = { path = "../../../bevygap/edgegap_async" }
+edgegap_async = { git = "https://github.com/bananabit-dev/bevygap.git" }
 anyhow = "1"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
