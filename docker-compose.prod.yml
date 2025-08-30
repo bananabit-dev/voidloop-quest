@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  # 📬 NATS - Message Broker
+  nats:
+    image: nats:2.10.21
+    ports:
+      - "4222:4222"
+    restart: unless-stopped
+    volumes:
+      - ./nats-data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4222"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 🌐 Game Client Web Server
+  voidloop-client:
+    image: voidloop-quest-client:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - MATCHMAKER_URL=wss://voidloop.quest/matchmaker/ws
+    volumes:
+      - ./ssl:/etc/nginx/ssl:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.client.rule=Host(`voidloop.quest`)"
+      - "traefik.http.services.client.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+  # 📡 BevyGap Matchmaker HTTPD
+  matchmaker-httpd:
+    image: bevygap_matchmaker_httpd
+    build:
+      context: ./work/bevygap
+      dockerfile: ./bevygap_matchmaker_httpd/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NATS_USER: "matchmaker_httpd"
+      NATS_PASS: "matchmaker_httpd"
+      NATS_HOST: "nats"
+      NATS_INSECURE: "set"
+    command: >
+      --bind 0.0.0.0:3000
+      --cors https://voidloop.quest
+      --player-limit 4
+      --fake-ip 127.0.0.1
+    depends_on:
+      nats:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.matchmaker.rule=Host(`voidloop.quest`) && PathPrefix(`/matchmaker`)"
+      - "traefik.http.services.matchmaker.loadbalancer.server.port=3000"
+    restart: unless-stopped
+
+  # 🎲 BevyGap Matchmaker Service
+  matchmaker:
+    image: bevygap_matchmaker
+    build:
+      context: ./work/bevygap
+      dockerfile: ./bevygap_matchmaker/Dockerfile
+    environment:
+      NATS_USER: "matchmaker"
+      NATS_PASS: "matchmaker"
+      NATS_HOST: "nats"
+      NATS_INSECURE: "set"
+      EDGEGAP_API_KEY: "${EDGEGAP_API_KEY}"
+    command: >
+      --app-name voidloop-quest
+      --app-version 1
+      --lightyear-protocol-id ${LIGHTYEAR_PROTOCOL_ID}
+      --lightyear-private-key "${LIGHTYEAR_PRIVATE_KEY}"
+      --player-limit 16
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 🏠 Lobby Service (Optional)
+  lobby:
+    image: bevygap_lobby
+    build:
+      context: /app/bevygap
+      dockerfile: ./bevygap_lobby/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: "postgres://lobby:${DB_PASSWORD}@postgres:5432/voidloop_lobby"
+      JWT_SECRET: "${JWT_SECRET}"
+      NATS_HOST: "nats"
+    depends_on:
+      - nats
+      - postgres
+    restart: unless-stopped
+
+  # 🗄️ PostgreSQL for Lobby
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: lobby
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      POSTGRES_DB: voidloop_lobby
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # 🔄 Traefik Reverse Proxy (Optional, for SSL)
+  traefik:
+    image: traefik:3.2
+    ports:
+      - "443:443"
+      - "8080:8080"  # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/traefik.yml
+      - ./ssl:/ssl:ro
+    restart: unless-stopped
+
+volumes:
+  nats-data:
+  postgres_data:
