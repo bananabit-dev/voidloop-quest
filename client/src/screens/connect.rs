@@ -1,10 +1,9 @@
 use crate::screens::*;
+#[cfg(feature = "bevygap")]
+use bevygap_client_plugin::BevygapClientConfig;
+
 use bevy::prelude::*;
-use bevy::ui::{Style, PositionType, Val, UiRect, AlignItems, JustifyContent, FlexDirection, BorderColor, BorderRadius, BackgroundColor, Interaction, ButtonBundle, NodeBundle};
-
-
 use bevy::{color::palettes::css, prelude::*};
-use lightyear::prelude::client::event::ConnectEvent;
 use lightyear::prelude::*;
 use shared::prelude::*;
 
@@ -31,11 +30,9 @@ fn continue_to_gameplay_screen(mut next_screen: ResMut<NextState<Screen>>) {
     next_screen.set(Screen::Gameplay);
 }
 
-fn connected_to_server(_connection: Option<Res<client::Connected>>) -> bool {
-    _connection.is_some()
+fn connected_to_server(connected: Option<Single<&Connected>>) -> bool {
+    connected.is_some()
 }
-
-// We need a "Connect Now" button, and a status text to update during connection.
 
 // Marker tag for loading screen components.
 #[derive(Component)]
@@ -47,16 +44,20 @@ const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::srgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
 
-fn spawn_connect_screen(mut commands: Commands, _asset_server: ResMut<AssetServer>) {
+fn spawn_connect_screen(mut commands: Commands, _asset_server: ResMut<AssetServer>, #[cfg(feature = "bevygap")] desired: Option<Res<super::lobby::DesiredPlayerLimit>>, #[cfg(feature = "bevygap")] mut cfg: ResMut<BevygapClientConfig>) {
     info!("spawn_connect_screen");
-    let _text_style = TextStyle {
-        font_size: 30.0,
-        ..default()
-    };
+
+    // If we arrived here from Lobby with a desired player limit, carry it over into the request
+    #[cfg(feature = "bevygap")]
+    if let Some(desired) = desired { 
+        // Carry over desired player limit via env var; BevygapClientPlugin includes it in request
+        std::env::set_var("VOIDLOOP_PLAYER_LIMIT", desired.0.to_string());
+    }
 
     commands
-        .spawn((StateScoped(Screen::Connect), NodeBundle {
-            style: Style {
+        .spawn((
+            StateScoped(Screen::Connect),
+            Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 align_items: AlignItems::Center,
@@ -64,32 +65,32 @@ fn spawn_connect_screen(mut commands: Commands, _asset_server: ResMut<AssetServe
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            ..default()
-        }))
+        ))
         .with_children(|parent| {
             parent
                 .spawn((
                     ConnectUIButton,
-                    ButtonBundle {
-                        style: Style {
-                            width: Val::Px(150.0),
-                            height: Val::Px(65.0),
-                            border: UiRect::all(Val::Px(5.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            margin: UiRect { bottom: Val::Px(20.0), ..default() },
-                            ..default()
-                        },
-                        border_color: BorderColor(Color::BLACK),
-                        border_radius: BorderRadius::MAX,
-                        background_color: NORMAL_BUTTON.into(),
+                    Button,
+                    // visual style of the button is expressed via Node properties + colors
+                    Node {
+                        width: Val::Px(150.0),
+                        height: Val::Px(65.0),
+                        border: UiRect::all(Val::Px(5.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        margin: UiRect { bottom: Val::Px(20.0), ..default() },
                         ..default()
                     },
+                    BorderColor(Color::BLACK),
+                    BorderRadius::MAX,
+                    BackgroundColor(NORMAL_BUTTON),
                 ))
                 .with_children(|parent| {
-                    parent.spawn((Text::default(), TextFont::from_font_size(22.0), TextColor(Color::srgb(0.9,0.9,0.9)),)).with_children(|p|{
-                        p.spawn(TextSpan::new("Connect"));
-                    });
+                    parent
+                        .spawn((Text::default(), TextFont::from_font_size(22.0), TextColor(Color::srgb(0.9,0.9,0.9)),))
+                        .with_children(|p|{
+                            p.spawn(TextSpan::new("Connect"));
+                        });
                 });
 
             parent
@@ -112,9 +113,9 @@ fn update_connect_status_text_observer(
     q_roots: Query<&Children, With<ConnectUIText>>,
     mut q_spans: Query<&mut TextSpan>,
 ) {
-    if let Ok(children) = q_roots.get_single() {
+    if let Ok(children) = q_roots.single() {
         for child in children.iter() {
-            if let Ok(mut span) = q_spans.get_mut(*child) {
+                if let Ok(mut span) = q_spans.get_mut(child) {
                 span.0.clone_from(&trigger.event().0);
                 break;
             }

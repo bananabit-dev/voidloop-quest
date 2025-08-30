@@ -1,17 +1,5 @@
 use crate::screens;
-use lightyear::client::prediction::TickManager;
-use lightyear::inputs::leafwing::input_buffer::InputBuffer;
-use lightyear::prelude::client::event::ConnectEvent;
 
-use bevy::prelude::*;
-#[cfg(feature = "bevygap")]
-use bevygap_client_plugin::prelude::*;
-use leafwing_input_manager::prelude::*;
-use lightyear::prelude::client::netcode::ClientConnection;
-use lightyear::prelude::*;
-use lightyear::prelude::client::*;
-use lightyear::core::timeline::LocalTimeline;
-use lightyear::inputs::leafwing::input_buffer::InputBuffer;
 
 /// The game name sent to the matchmaker when requesting a server to play on
 pub const GAME_NAME: &str = "bevygap-spaceships";
@@ -46,10 +34,6 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
 
         app.add_observer(connect_client_observer);
 
-        app.add_systems(
-            PreUpdate,
-            handle_connection,
-        );
         // all actions related-system that can be rolled back should be in FixedUpdate schedule
         app.add_systems(
             FixedUpdate,
@@ -58,20 +42,7 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
                 shared_player_firing.run_if(not(is_in_rollback)),
             ),
         );
-    app.add_systems(
-        Update,
-        (
-            add_ball_physics,
-            add_bullet_physics,
-            handle_new_player
-        )
-    );
-    app.add_systems(
-        Update,
-        handle_hit_event
-            .run_if(on_event::<BulletHitEvent>)
-            .after(process_collisions),
-    );
+        app.add_systems(Update, (add_ball_physics, add_bullet_physics, handle_new_player));
 
         app.add_systems(
             Update,
@@ -80,18 +51,18 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
                 .run_if(resource_changed::<ServerMetadata>),
         );
 
-        #[cfg(target_family = "wasm")]
-        app.add_systems(
-            Startup,
-            |mut settings: ResMut<lightyear::client::web::KeepaliveSettings>| {
-                // the show must go on, even in the background.
-                let keepalive = 1000. / FIXED_TIMESTEP_HZ;
-                info!("Setting webworker keepalive to {keepalive}");
-                settings.wake_delay = keepalive;
-            },
-        );
+        // show the client id when connection is established
+        app.add_observer(handle_connection);
     }
 }
+
+use bevy::prelude::*;
+#[cfg(feature = "bevygap")]
+use bevygap_client_plugin::prelude::*;
+use leafwing_input_manager::prelude::*;
+use lightyear::prelude::*;
+use lightyear::prelude::input::InputBuffer;
+use shared::prelude::*;
 
 /// This is the path to the websocket endpoint on `bevygap_matchmaker_httpd``
 ///
@@ -172,9 +143,14 @@ pub(crate) fn connect_client_observer(
 pub(crate) fn connect_client_observer(
     _trigger: Trigger<crate::screens::ConnectToServerRequest>,
     mut commands: Commands,
+    q_client: Query<Entity, With<Client>>,
 ) {
     info!("Connecting...");
-    commands.connect_client();
+    if let Ok(entity) = q_client.get_single() {
+        commands.trigger_targets(Connect, entity);
+    } else {
+        warn!("No Client entity found to connect");
+    }
 }
 
 #[cfg(feature = "bevygap")]
@@ -194,7 +170,7 @@ fn render_server_metadata(mut commands: Commands, metadata: Res<ServerMetadata>)
             Text::default(),
             TextFont::from_font_size(16.0),
             TextColor(bevy::color::palettes::css::WHITE.into()),
-            Style {
+            Node {
                 position_type: PositionType::Absolute,
                 top: Val::Px(5.0),
                 left: Val::Px(5.0),
@@ -209,23 +185,18 @@ fn render_server_metadata(mut commands: Commands, metadata: Res<ServerMetadata>)
         });
 }
 
-/// Listen for events to know when the client is connected, and spawn a text entity
-/// to display the client id
-pub(crate) fn handle_connection(
-    mut commands: Commands,
-    mut connection_event: EventReader<ConnectEvent>,
-) {
-    for event in connection_event.read() {
-        let client_id = event.client_id();
-    commands.spawn((
-        Text::default(),
-        TextFont::from_font_size(12.0),
-        TextColor(Color::WHITE),
-        Style { position_type: PositionType::Absolute, top: Val::Px(25.0), left: Val::Px(5.0), ..default() },
-    )).with_children(|p|{
-        p.spawn(TextSpan::new(format!("Client {}", client_id)));
-    });
-    }
+/// Listen for connection state changes and spawn a text entity to display the client id
+fn handle_connection(_trigger: Trigger<OnAdd, Connected>, mut commands: Commands, local_id: Single<&LocalId>) {
+    commands
+        .spawn((
+            Text::default(),
+            TextFont::from_font_size(12.0),
+            TextColor(Color::WHITE),
+            Node { position_type: PositionType::Absolute, top: Val::Px(25.0), left: Val::Px(5.0), ..default() },
+        ))
+        .with_children(|p| {
+            p.spawn(TextSpan::new(format!("Client {}", local_id.0)));
+        });
 }
 
 /// Blueprint pattern: when the ball gets replicated from the server, add all the components
@@ -261,7 +232,6 @@ fn add_bullet_physics(
 /// ..and if it's our own player, set up input stuff
 #[allow(clippy::type_complexity)]
 fn handle_new_player(
-    connection: Res<ClientConnection>,
     mut commands: Commands,
     mut player_query: Query<(Entity, Has<Controlled>), (Added<Predicted>, With<Player>)>,
 ) {
@@ -283,8 +253,6 @@ fn handle_new_player(
         } else {
             info!("Remote player replicated to us: {entity:?}");
         }
-        let client_id = connection.id();
-        info!(?entity, ?client_id, "adding physics to predicted player");
         commands.entity(entity).insert(PhysicsBundle::player_ship());
     }
 }
@@ -296,13 +264,15 @@ fn handle_hit_event(
     mut commands: Commands,
 ) {
     for ev in events.read() {
-        commands.spawn((
-            SpatialBundle {
-                transform: Transform::from_xyz(ev.position.x, ev.position.y, 0.0),
-                ..default()
-            },
-            Explosion::new(time.elapsed(), ev.bullet_color),
-        ));
+        #[cfg(feature = "gui")]
+        {
+            use shared::renderer::Explosion;
+            commands.spawn((
+                Transform::from_xyz(ev.position.x, ev.position.y, 0.0),
+                Visibility::default(),
+                Explosion::new(time.elapsed(), ev.bullet_color),
+            ));
+        }
     }
 }
 
@@ -310,7 +280,7 @@ fn handle_hit_event(
 fn player_movement(
     mut q: Query<(
         &ActionState<PlayerActions>,
-        &InputBuffer<PlayerActions>,
+        &InputBuffer<ActionState<PlayerActions>>,
         ApplyInputsQuery,
     ), (With<Player>, With<Predicted>)>,
     timeline: Single<&LocalTimeline>,
@@ -329,7 +299,9 @@ fn player_movement(
             if staleness > MAX_STALE_TICKS {
                 apply_action_state_to_player_movement(&ActionState::default(), staleness, &mut aiq, tick);
             } else {
-                apply_action_state_to_player_movement(prev_input, staleness, &mut aiq, tick);
+                let mut snapshot = ActionState::<PlayerActions>::default();
+                snapshot.clone_from(prev_input);
+                apply_action_state_to_player_movement(&snapshot, staleness, &mut aiq, tick);
             }
         } else {
             apply_action_state_to_player_movement(action_state, 0, &mut aiq, tick);

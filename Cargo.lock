@@ -2008,6 +2008,7 @@ dependencies = [
  "async-channel",
  "bevy 0.16.1",
  "futures-util",
+ "log",
  "tokio",
  "tokio-tungstenite-wasm",
  "wasm-bindgen-futures",
@@ -3045,8 +3046,10 @@ dependencies = [
  "base64 0.22.1",
  "bevy 0.16.1",
  "bevy_nfws",
+ "bevy_state 0.16.1",
  "bevygap_shared",
  "lightyear",
+ "log",
  "serde_json",
 ]
 
@@ -3058,6 +3061,7 @@ dependencies = [
  "bevy 0.16.1",
  "bevygap_shared",
  "lightyear",
+ "log",
  "reqwest",
  "serde",
  "serde_json",

@@ -20,6 +20,9 @@ mod renderer;
 
 pub mod prelude {
     pub use std::time::Duration;
+#[cfg(feature = "gui")]
+pub use super::renderer;
+
 
     /// Must match on server and client. Bump it whenever you make breaking changes to the protocol.
     pub const PROTOCOL_ID: u64 = 80085;
