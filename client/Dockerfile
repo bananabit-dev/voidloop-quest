@@ -1,19 +1,19 @@
-FROM metabrew/rust-chef-sccache:0.0.6 AS base
-ENV RUSTFLAGS=--cfg=web_sys_unstable_apis
+FROM rust:1 AS chef
+RUN cargo install cargo-chef
 ENV CARGO_BUILD_TARGET=wasm32-unknown-unknown
 #RUN rustup target add wasm32-unknown-unknown
 
 # cargo build --release --target wasm32-unknown-unknown -p client
 
 # Cargo Chef Planner
-FROM base AS planner
+FROM chef AS planner
 WORKDIR /app
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo chef prepare --bin client --recipe-path recipe.json
 
 # Cargo Chef Builder
-FROM base AS builder
+FROM chef AS builder
 # Use LLVM clang not default cc, otherwise prone to weird silent wasm linker failures.
 # Browser reports: 
 #    Uncaught TypeError: Failed to resolve module specifier "env".
