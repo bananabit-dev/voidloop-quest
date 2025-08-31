@@ -49,7 +49,6 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target \
-    cd voidloop-quest && \
     cargo build --release --package server && \
     # Copy the binary to a known location
     cp /app/target/release/server /app/server-binary
@@ -72,7 +71,7 @@ WORKDIR /app
 
 # Copy binary and assets
 COPY --from=builder --chown=gameserver:gameserver /app/server-binary /app/server
-COPY --from=builder --chown=gameserver:gameserver /app/voidloop-quest/assets /app/assets
+COPY --from=builder --chown=gameserver:gameserver /app/assets /app/assets
 
 # Make binary executable
 RUN chmod +x /app/server

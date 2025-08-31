@@ -63,7 +63,6 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target \
-    cd voidloop-quest && \
     cargo build --release --target wasm32-unknown-unknown --package client && \
     wasm-bindgen --no-typescript --target web \
         --out-dir /app/www \
@@ -129,7 +128,7 @@ RUN adduser -D -H -s /sbin/nologin nginx-user
 COPY --from=builder /app/www /usr/share/nginx/html/
 
 # Copy game assets
-COPY --from=builder /app/voidloop-quest/assets /usr/share/nginx/html/assets/
+COPY --from=builder /app/assets /usr/share/nginx/html/assets/
 
 # Create nginx config with proper headers for WASM
 RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
