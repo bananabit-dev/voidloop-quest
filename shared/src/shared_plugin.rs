@@ -137,13 +137,15 @@ pub fn shared_player_firing(
         Or<(With<Predicted>, With<Replicate>)>,
     >,
     mut commands: Commands,
-    timeline: Single<(&LocalTimeline, Has<Server>), Without<Client>>,
+    timeline: Query<(&LocalTimeline, Has<Server>)>,
 ) {
     if q.is_empty() {
         return;
     }
 
-    let (timeline, is_server) = timeline.into_inner();
+    let Ok((timeline, is_server)) = timeline.single() else {
+        return;
+    };
     let current_tick = timeline.tick();
     for (
         player_position,
@@ -252,10 +254,12 @@ pub fn process_collisions(
     bullet_q: Query<(&BulletMarker, &ColorComponent, &Position)>,
     player_q: Query<&Player>,
     mut commands: Commands,
-    timeline: Single<(&LocalTimeline, Has<Server>), Without<Client>>,
+    timeline: Query<(&LocalTimeline, Has<Server>)>,
     mut hit_ev_writer: EventWriter<BulletHitEvent>,
 ) {
-    let (_timeline, _is_server) = timeline.into_inner();
+    let Ok((_timeline, _is_server)) = timeline.single() else {
+        return;
+    };
     for contacts in collisions.iter() {
         if let Ok((bullet, col, bullet_pos)) = bullet_q.get(contacts.collider1) {
             if player_q.get(contacts.collider2).is_ok() {
