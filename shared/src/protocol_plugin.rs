@@ -237,6 +237,9 @@ impl Plugin for ProtocolPlugin {
         })
         .add_direction(NetworkDirection::ServerToClient);
 
+        // Add Leafwing input plugin
+        app.add_plugins(input::leafwing::InputPlugin::<PlayerActions>::default());
+
         // Player is synced as Simple, because we periodically update rtt ping stats
         app.register_component::<Player>()
             .add_prediction(PredictionMode::Simple)

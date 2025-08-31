@@ -25,20 +25,11 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
             });
 
             app.add_plugins(BevygapClientPlugin);
-            
-            // Add Leafwing input plugin after BevyGap is set up
-            app.add_plugins(input::leafwing::InputPlugin::<PlayerActions>::default());
 
             app.add_systems(
                 Update,
                 on_bevygap_state_change.run_if(state_changed::<BevygapClientState>),
             );
-        }
-        
-        #[cfg(not(feature = "bevygap"))]
-        {
-            // Add Leafwing input plugin for non-bevygap builds
-            app.add_plugins(input::leafwing::InputPlugin::<PlayerActions>::default());
         }
 
         app.add_observer(connect_client_observer);
@@ -49,8 +40,7 @@ impl Plugin for BevygapSpaceshipsClientPlugin {
             (
                 player_movement,
                 shared_player_firing.run_if(not(is_in_rollback)),
-            )
-            .run_if(resource_exists::<ClientConnection>),
+            ),
         );
         app.add_systems(Update, (add_ball_physics, add_bullet_physics, handle_new_player));
 

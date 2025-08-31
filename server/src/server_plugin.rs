@@ -24,9 +24,6 @@ impl Plugin for BevygapSpaceshipsServerPlugin {
         app.add_observer(handle_new_client);
         app.add_observer(handle_connected);
         
-        // Add Leafwing input plugin for server
-        app.add_plugins(input::leafwing::InputPlugin::<PlayerActions>::default());
-        
         // Systems that handle player input and movement
         app.add_systems(
             FixedUpdate,
@@ -60,7 +57,6 @@ fn handle_bevygap_ready(_trigger: Trigger<BevygapReady>, mut commands: Commands)
 fn update_server_metadata(
     mut metadata: ResMut<ServerMetadata>,
     context: Res<ArbitriumContext>,
-    mut sender: ResMut<ServerResourceSender>,
 ) {
     metadata.fqdn = context.fqdn();
     metadata.location = context.location();
@@ -70,9 +66,6 @@ fn update_server_metadata(
         env!("VERGEN_BUILD_TIMESTAMP")
     );
     info!("Updating server metadata: {metadata:?}");
-    
-    // Replicate the ServerMetadata resource to all clients
-    sender.replicate_resource::<ServerMetadata>(NetworkTarget::All);
 }
 
 /// When a new client connection is created, set up replication
