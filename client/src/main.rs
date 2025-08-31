@@ -59,6 +59,10 @@ fn main() {
 
     info!("🎮 Void Loop Quest Client starting...");
 
+    // Add lightyear client plugins with a non-zero fixed timestep
+    let tick_duration = core::time::Duration::from_secs_f64(1.0 / FIXED_TIMESTEP_HZ);
+    app.add_plugins(lightyear::prelude::client::ClientPlugins { tick_duration });
+
     // Spawn client entity based on feature flags
     #[cfg(feature = "bevygap")]
     {
