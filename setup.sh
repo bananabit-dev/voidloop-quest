@@ -34,18 +34,21 @@ read -rp "Domain (e.g., voidloop.quest): " DOMAIN
 read -rp "Admin email for TLS (Let's Encrypt): " EMAIL
 [ -n "${EMAIL:-}" ] || abort "Email is required"
 
-echo "Container images (use public images or login before)."
-read -rp "Client image (e.g., ghcr.io/yourorg/voidloop-quest-client:latest): " CLIENT_IMAGE
-[ -n "${CLIENT_IMAGE:-}" ] || abort "Client image is required"
+echo "Container images configuration:"
+echo "  - Using Docker Hub (bananabit/*) for web services"
+echo
 
-read -rp "Matchmaker HTTPD image (e.g., ghcr.io/yourorg/bevygap_matchmaker_httpd:latest): " MM_HTTPD_IMAGE
-[ -n "${MM_HTTPD_IMAGE:-}" ] || abort "Matchmaker HTTPD image is required"
+read -rp "Client image [bananabit/voidloop-quest-wasm:latest]: " CLIENT_IMAGE
+CLIENT_IMAGE="${CLIENT_IMAGE:-bananabit/voidloop-quest-wasm:latest}"
 
-read -rp "Matchmaker image (e.g., ghcr.io/yourorg/bevygap_matchmaker:latest): " MM_IMAGE
-[ -n "${MM_IMAGE:-}" ] || abort "Matchmaker image is required"
+read -rp "Matchmaker HTTPD image [bananabit/bevygap_matchmaker_httpd:latest]: " MM_HTTPD_IMAGE
+MM_HTTPD_IMAGE="${MM_HTTPD_IMAGE:-bananabit/bevygap_matchmaker_httpd:latest}"
 
-read -rp "Lobby image (e.g., ghcr.io/yourorg/bevygap_lobby:latest): " LOBBY_IMAGE
-[ -n "${LOBBY_IMAGE:-}" ] || abort "Lobby image is required"
+read -rp "Matchmaker image [bananabit/bevygap_matchmaker:latest]: " MM_IMAGE
+MM_IMAGE="${MM_IMAGE:-bananabit/bevygap_matchmaker:latest}"
+
+read -rp "Lobby image [bananabit/bevygap_webhook_sink:latest]: " LOBBY_IMAGE
+LOBBY_IMAGE="${LOBBY_IMAGE:-bananabit/bevygap_webhook_sink:latest}"
 
 read -rp "Max players per session [16]: " MAX_PLAYERS
 MAX_PLAYERS="${MAX_PLAYERS:-16}"
@@ -183,6 +186,7 @@ NATS_PASSWORD=${NATS_PASSWORD}
 DB_PASSWORD=${DB_PASSWORD}
 JWT_SECRET=${JWT_SECRET}
 
+# Docker Hub images
 CLIENT_IMAGE=${CLIENT_IMAGE}
 MM_HTTPD_IMAGE=${MM_HTTPD_IMAGE}
 MM_IMAGE=${MM_IMAGE}
