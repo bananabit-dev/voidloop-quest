@@ -1,47 +1,80 @@
-version: '3.8'
+version: "3.9"
+
+networks:
+  public:
+  internal:
+    internal: true
+
+volumes:
+  nats-data:
+  postgres_data:
+  traefik-data:
 
 services:
-  # 📬 NATS - Message Broker
+  # 🔄 Traefik Reverse Proxy (TLS + routing)
+  traefik:
+    image: traefik:3.2
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Redirect HTTP -> HTTPS
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      # Let's Encrypt
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/data/acme.json
+      # Dashboard disabled (recommended). If you need it, expose with auth, not port 8080.
+      - --api.dashboard=false
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-data:/data
+    networks: [public, internal]
+
+  # 📬 NATS - Message Broker (private, with auth)
   nats:
     image: nats:2.10.21
-    ports:
-      - "4222:4222"
     restart: unless-stopped
+    command: ["-p", "4222", "-user", "${NATS_USER}", "-pass", "${NATS_PASSWORD}"]
     volumes:
-      - ./nats-data:/data
+      - nats-data:/data
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "4222"]
       interval: 5s
       timeout: 3s
       retries: 5
+    networks: [internal]
 
-  # 🌐 Game Client Web Server
+  # 🌐 Game Client (static site) — served via Traefik
   voidloop-client:
     image: voidloop-quest-client:latest
-    ports:
-      - "80:80"
-      - "443:443"
+    restart: unless-stopped
     environment:
       - MATCHMAKER_URL=wss://voidloop.quest/matchmaker/ws
-    volumes:
-      - ./ssl:/etc/nginx/ssl:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.client.rule=Host(`voidloop.quest`)"
+      - "traefik.http.routers.client.entrypoints=websecure"
+      - "traefik.http.routers.client.tls.certresolver=le"
       - "traefik.http.services.client.loadbalancer.server.port=80"
-    restart: unless-stopped
+    networks: [internal]
 
-  # 📡 BevyGap Matchmaker HTTPD
+  # 📡 BevyGap Matchmaker HTTPD (private; routed at /matchmaker)
   matchmaker-httpd:
     image: bevygap_matchmaker_httpd
     build:
       context: ./work/bevygap
       dockerfile: ./bevygap_matchmaker_httpd/Dockerfile
-    ports:
-      - "3000:3000"
+    restart: unless-stopped
     environment:
-      NATS_USER: "matchmaker_httpd"
-      NATS_PASS: "matchmaker_httpd"
+      NATS_USER: "${NATS_HTTPD_USER:-matchmaker_httpd}"
+      NATS_PASS: "${NATS_HTTPD_PASS:-matchmaker_httpd}"
       NATS_HOST: "nats"
       NATS_INSECURE: "set"
     command: >
@@ -55,18 +88,21 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.matchmaker.rule=Host(`voidloop.quest`) && PathPrefix(`/matchmaker`)"
+      - "traefik.http.routers.matchmaker.entrypoints=websecure"
+      - "traefik.http.routers.matchmaker.tls.certresolver=le"
       - "traefik.http.services.matchmaker.loadbalancer.server.port=3000"
-    restart: unless-stopped
+    networks: [internal]
 
-  # 🎲 BevyGap Matchmaker Service
+  # 🎲 BevyGap Matchmaker Service (private)
   matchmaker:
     image: bevygap_matchmaker
     build:
       context: ./work/bevygap
       dockerfile: ./bevygap_matchmaker/Dockerfile
+    restart: unless-stopped
     environment:
-      NATS_USER: "matchmaker"
-      NATS_PASS: "matchmaker"
+      NATS_USER: "${NATS_MM_USER:-matchmaker}"
+      NATS_PASS: "${NATS_MM_PASS:-matchmaker}"
       NATS_HOST: "nats"
       NATS_INSECURE: "set"
       EDGEGAP_API_KEY: "${EDGEGAP_API_KEY}"
@@ -79,48 +115,40 @@ services:
     depends_on:
       nats:
         condition: service_healthy
-    restart: unless-stopped
+    networks: [internal]
 
-  # 🏠 Lobby Service (Optional)
+  # 🏠 Lobby API (optional; private; routed at /lobby)
   lobby:
     image: bevygap_lobby
     build:
-      context: /app/bevygap
+      context: ./work/bevygap   # adjust to your repo path
       dockerfile: ./bevygap_lobby/Dockerfile
-    ports:
-      - "3001:3001"
+    restart: unless-stopped
     environment:
       DATABASE_URL: "postgres://lobby:${DB_PASSWORD}@postgres:5432/voidloop_lobby"
       JWT_SECRET: "${JWT_SECRET}"
       NATS_HOST: "nats"
+      NATS_USER: "${NATS_LOBBY_USER:-lobby}"
+      NATS_PASS: "${NATS_LOBBY_PASS:-lobby}"
     depends_on:
       - nats
       - postgres
-    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lobby.rule=Host(`voidloop.quest`) && PathPrefix(`/lobby`)"
+      - "traefik.http.routers.lobby.entrypoints=websecure"
+      - "traefik.http.routers.lobby.tls.certresolver=le"
+      - "traefik.http.services.lobby.loadbalancer.server.port=3001"
+    networks: [internal]
 
-  # 🗄️ PostgreSQL for Lobby
+  # 🗄️ PostgreSQL for Lobby (private)
   postgres:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: lobby
       POSTGRES_PASSWORD: "${DB_PASSWORD}"
       POSTGRES_DB: voidloop_lobby
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  # 🔄 Traefik Reverse Proxy (Optional, for SSL)
-  traefik:
-    image: traefik:3.2
-    ports:
-      - "443:443"
-      - "8080:8080"  # Dashboard
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/traefik.yml
-      - ./ssl:/ssl:ro
-    restart: unless-stopped
-
-volumes:
-  nats-data:
-  postgres_data:
+    networks: [internal]
