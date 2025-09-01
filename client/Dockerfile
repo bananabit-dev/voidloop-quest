@@ -63,11 +63,11 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target \
-    cargo build --release --target wasm32-unknown-unknown --package client && \
+    cargo build --release --target wasm32-unknown-unknown --package voidloop-quest-client && \
     wasm-bindgen --no-typescript --target web \
         --out-dir /app/www \
         --out-name "voidloop-quest" \
-        /app/target/wasm32-unknown-unknown/release/client.wasm
+        /app/target/wasm32-unknown-unknown/release/voidloop-quest-client.wasm
 
 # Create the index.html and other web assets
 RUN cat > /app/www/index.html << 'EOF'
