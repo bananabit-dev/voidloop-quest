@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use clap::Parser;
-use lightyear::prelude::server::TransportConfig;
 use server_plugin::ServerPlugin;
 
 mod server_plugin;
@@ -54,18 +53,7 @@ fn main() {
     info!("🎮 Simple Platformer Server starting...");
     info!("📡 Listening on port {}", args.port);
     
-    let transport = match args.transport.as_str() {
-        "webtransport" => TransportConfig::WebTransportServer {
-            server_addr: ([0, 0, 0, 0], args.port).into(),
-            certificate: Default::default(),
-        },
-        _ => TransportConfig::WebSocketServer {
-            server_addr: ([0, 0, 0, 0], args.port).into(),
-            certificate: Default::default(),
-        },
-    };
-    
     App::new()
-        .add_plugins(ServerPlugin { transport })
+        .add_plugins(ServerPlugin)
         .run();
 }
