@@ -1,11 +1,11 @@
 use bevy::prelude::*;
-use bevy::sprite::Mesh2dHandle;
-use bevygap_client_plugin::BevygapClientPlugin;
+use bevygap_client_plugin::{BevygapClientPlugin, prelude::BevygapConnectExt};
 use leafwing_input_manager::prelude::*;
-use lightyear::prelude::*;
-use lightyear::prelude::client::*;
 
-use shared::{protocol, Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
+use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
+
+#[derive(Resource, Default)]
+struct FloorSpawned(bool);
 
 pub struct ClientPlugin;
 
@@ -43,7 +43,7 @@ impl Plugin for ClientPlugin {
             update_player_visual,
             handle_player_spawn,
         ));
-        app.insert_resource(ClientConfig::default());
+        app.insert_resource(FloorSpawned::default());
 
         app.add_systems(Startup, |mut commands: Commands| {
             commands.bevygap_connect_client();
@@ -99,7 +99,6 @@ fn spawn_platforms(commands: &mut Commands) {
         commands.spawn((
             Platform,
             Transform::from_translation(pos),
-            ReplicationTarget::default(),
         ));
     }
 }
@@ -107,28 +106,24 @@ fn spawn_platforms(commands: &mut Commands) {
 // Handle when a new player spawns (including local player)
 fn handle_player_spawn(
     mut commands: Commands,
-    new_players: Query<(Entity, &ClientId), Added<Player>>,
-    connection: Res<ClientConnection>,
+    new_players: Query<Entity, Added<Player>>,
 ) {
-    for (entity, client_id) in new_players.iter() {
+    for entity in new_players.iter() {
         // Add input handling for local player
-        if let Some(local_id) = connection.id() {
-            if *client_id == local_id {
-                commands.entity(entity).insert((
-                    InputMap::<PlayerActions>::default()
-                        .with(PlayerActions::MoveLeft, KeyCode::KeyA)
-                        .with(PlayerActions::MoveLeft, KeyCode::ArrowLeft)
-                        .with(PlayerActions::MoveRight, KeyCode::KeyD)
-                        .with(PlayerActions::MoveRight, KeyCode::ArrowRight)
-                        .with(PlayerActions::Jump, KeyCode::Space)
-                        .with(PlayerActions::Jump, KeyCode::KeyW)
-                        .with(PlayerActions::Jump, KeyCode::ArrowUp),
-                    ActionState::<PlayerActions>::default(),
-                ));
-                
-                info!("Local player spawned with controls: A/D or Arrow keys to move, Space/W to jump");
-            }
-        }
+        // TODO: Determine if this is the local player
+        commands.entity(entity).insert((
+            InputMap::<PlayerActions>::default()
+                .with(PlayerActions::MoveLeft, KeyCode::KeyA)
+                .with(PlayerActions::MoveLeft, KeyCode::ArrowLeft)
+                .with(PlayerActions::MoveRight, KeyCode::KeyD)
+                .with(PlayerActions::MoveRight, KeyCode::ArrowRight)
+                .with(PlayerActions::Jump, KeyCode::Space)
+                .with(PlayerActions::Jump, KeyCode::KeyW)
+                .with(PlayerActions::Jump, KeyCode::ArrowUp),
+            ActionState::<PlayerActions>::default(),
+        ));
+        
+        info!("Player spawned with controls: A/D or Arrow keys to move, Space/W to jump");
     }
 }
 
@@ -141,8 +136,8 @@ fn spawn_player_visual(
 ) {
     for (entity, color, transform) in new_players.iter() {
         commands.entity(entity).insert((
-            Mesh2dHandle(meshes.add(Rectangle::new(30.0, 30.0))),
-            materials.add(color.color),
+            Mesh2d(meshes.add(Rectangle::new(30.0, 30.0))),
+            MeshMaterial2d(materials.add(color.color)),
             Transform::from_translation(transform.translation),
         ));
     }
@@ -154,26 +149,24 @@ fn spawn_platform_visual(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     new_platforms: Query<(Entity, &Transform), Added<Platform>>,
+    mut floor_spawned: ResMut<FloorSpawned>,
 ) {
     for (entity, transform) in new_platforms.iter() {
         commands.entity(entity).insert((
-            Mesh2dHandle(meshes.add(Rectangle::new(200.0, 20.0))),
-            materials.add(Color::srgb(0.3, 0.3, 0.3)),
+            Mesh2d(meshes.add(Rectangle::new(200.0, 20.0))),
+            MeshMaterial2d(materials.add(Color::srgb(0.3, 0.3, 0.3))),
             *transform,
         ));
     }
     
     // Also spawn a visual floor (only once on startup)
-    static mut FLOOR_SPAWNED: bool = false;
-    unsafe {
-        if !FLOOR_SPAWNED {
-            FLOOR_SPAWNED = true;
-            commands.spawn((
-                Mesh2dHandle(meshes.add(Rectangle::new(1000.0, 20.0))),
-                materials.add(Color::srgb(0.2, 0.2, 0.2)),
-                Transform::from_xyz(0.0, -210.0, 0.0),
-            ));
-        }
+    if !floor_spawned.0 {
+        floor_spawned.0 = true;
+        commands.spawn((
+            Mesh2d(meshes.add(Rectangle::new(1000.0, 20.0))),
+            MeshMaterial2d(materials.add(Color::srgb(0.2, 0.2, 0.2))),
+            Transform::from_xyz(0.0, -210.0, 0.0),
+        ));
     }
 }
 
