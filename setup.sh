@@ -15,6 +15,7 @@
 # Note:
 # - You must provide container image names that are accessible (public or docker login beforehand)
 # - If your images are private, run `docker login` before executing this script
+#
 
 set -euo pipefail
 
