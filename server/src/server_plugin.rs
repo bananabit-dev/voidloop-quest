@@ -1,15 +1,11 @@
 use bevy::prelude::*;
-use bevygap_server_plugin::BevygapServerPlugin;
+use bevygap_server_plugin::prelude::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
-use lightyear::prelude::server::*;
-use rand::Rng;
 
-use shared::{protocol, Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
+use shared::{PlayerActions, Platform, SharedPlugin};
 
-pub struct ServerPlugin {
-    pub transport: TransportConfig,
-}
+pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
@@ -30,10 +26,11 @@ impl Plugin for ServerPlugin {
         
         // Server-specific systems
         app.add_systems(Startup, setup_world);
-        app.add_systems(Update, (
-            handle_new_connections,
-            handle_disconnections,
-        ));
+        // Connection handling is managed by bevygap
+        // app.add_systems(Update, (
+        //     handle_new_connections,
+        //     handle_disconnections,
+        // ));
         
         // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
         // Example: Game rules, scoring, AI, matchmaking logic, etc.
@@ -58,16 +55,18 @@ fn setup_world(mut commands: Commands) {
         commands.spawn((
             Platform,
             Transform::from_translation(pos),
-            ReplicationTarget::default(),
+            ReplicationTarget::<Client>::default(),
         ));
     }
     
     info!("World setup complete with {} platforms", 5);
 }
 
+// Connection handling functions - commented out until we determine correct event types
+/*
 fn handle_new_connections(
     mut commands: Commands,
-    mut connections: EventReader<ConnectEvent>,
+    mut connections: EventReader<ServerConnectEvent>,
 ) {
     for event in connections.read() {
         let client_id = event.client_id;
@@ -94,7 +93,7 @@ fn handle_new_connections(
             PlayerColor { color },
             InputMap::<PlayerActions>::default(),
             ActionState::<PlayerActions>::default(),
-            ReplicationTarget::default(),
+            ReplicationTarget::<Client>::default(),
             client_id,
         )).id();
         
@@ -105,8 +104,8 @@ fn handle_new_connections(
 
 fn handle_disconnections(
     mut commands: Commands,
-    mut disconnections: EventReader<DisconnectEvent>,
-    players: Query<(Entity, &ClientId)>,
+    mut disconnections: EventReader<ServerDisconnectEvent>,
+    players: Query<(Entity, &Client)>,
 ) {
     for event in disconnections.read() {
         let client_id = event.client_id;
@@ -122,6 +121,7 @@ fn handle_disconnections(
         }
     }
 }
+*/
 
 // ==== CUSTOM SERVER LOGIC AREA - Add your game rules and server logic here ====
 // Example: Scoring system, match management, AI opponents, etc.
