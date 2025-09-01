@@ -1,268 +1,134 @@
-use bevy::color::palettes::css;
 use bevy::prelude::*;
-use bevy::time::common_conditions::on_timer;
-#[cfg(feature = "bevygap")]
-use bevygap_server_plugin::prelude::*;
+use bevygap_server_plugin::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
-use lightyear::prelude::server::*;
 use lightyear::prelude::*;
-use shared::prelude::*;
-use std::time::Duration;
+use lightyear::prelude::server::*;
+use rand::Rng;
 
-#[derive(Default)]
-pub struct BevygapSpaceshipsServerPlugin;
+use shared::{protocol, Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
 
-impl Plugin for BevygapSpaceshipsServerPlugin {
+pub struct ServerPlugin {
+    pub transport: TransportConfig,
+}
+
+impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
-        #[cfg(feature = "bevygap")]
-        {
-            app.add_plugins(BevygapServerPlugin::default());
-            app.add_observer(handle_bevygap_ready);
-        }
-
-        app.add_systems(Startup, init);
-        app.add_observer(handle_new_client);
-        app.add_observer(handle_connected);
+        // Minimal Bevy plugins for server
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
+            std::time::Duration::from_secs_f32(1.0 / 60.0), // 60 FPS server tick rate
+        ));
         
-        // Systems that handle player input and movement
-        app.add_systems(
-            FixedUpdate,
-            (player_movement, shared_player_firing)
-                .chain(),
-        );
+        // Input plugin
+        app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
         
-app.add_systems(Update, update_player_metrics);
-
-        app.add_systems(
-            FixedUpdate,
-            handle_hit_event
-                .run_if(on_event::<BulletHitEvent>)
-                .after(process_collisions),
-        );
-
-        #[cfg(feature = "bevygap")]
-        app.add_systems(
-            Update,
-            update_server_metadata.run_if(resource_added::<ArbitriumContext>),
-        );
+        // Networking
+        app.add_plugins(BevygapServerPlugin);
+        
+        // Shared game logic
+        app.add_plugins(SharedPlugin);
+        
+        // Server-specific systems
+        app.add_systems(Startup, setup_world);
+        app.add_systems(Update, (
+            handle_new_connections,
+            handle_disconnections,
+        ));
+        
+        // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
+        // Example: Game rules, scoring, AI, matchmaking logic, etc.
+        // app.add_systems(Update, your_custom_server_system);
+        // ==== END CUSTOM SERVER SYSTEMS AREA ====
     }
 }
 
-#[cfg(feature = "bevygap")]
-fn handle_bevygap_ready(_trigger: Trigger<BevygapReady>, mut commands: Commands) {
-    info!("BevyGap reports ready - server can accept connections");
-}
-
-#[cfg(feature = "bevygap")]
-fn update_server_metadata(
-    mut metadata: ResMut<ServerMetadata>,
-    context: Res<ArbitriumContext>,
-) {
-    metadata.fqdn = context.fqdn();
-    metadata.location = context.location();
-    metadata.build_info = format!(
-        "Git: {} built at: {}",
-        env!("VERGEN_GIT_DESCRIBE"),
-        env!("VERGEN_BUILD_TIMESTAMP")
-    );
-    info!("Updating server metadata: {metadata:?}");
-}
-
-/// When a new client connection is created, set up replication
-pub(crate) fn handle_new_client(trigger: Trigger<OnAdd, LinkOf>, mut commands: Commands) {
-    commands.entity(trigger.target()).insert((
-        ReplicationSender::new(SERVER_REPLICATION_INTERVAL, SendUpdatesMode::SinceLastAck, false),
-        Name::from("Client"),
-    ));
-}
-
-/// When a client successfully connects, spawn their player entity
-pub(crate) fn handle_connected(
-    trigger: Trigger<OnAdd, Connected>,
-    query: Query<&RemoteId, With<ClientOf>>,
-    mut commands: Commands,
-    all_players: Query<Entity, With<Player>>,
-) {
-    let Ok(client_id) = query.get(trigger.target()) else {
-        return;
-    };
-    let client_id = client_id.0;
+fn setup_world(mut commands: Commands) {
+    info!("Setting up game world...");
     
-    // Track the number of connected players for colors and positions
-    let player_n = all_players.iter().count();
-    
-    info!("New connected client, client_id: {client_id:?}. Spawning player entity..");
-    
-    // Pick color and position for player
-    let available_colors = [
-        css::LIMEGREEN,
-        css::PINK,
-        css::YELLOW,
-        css::AQUA,
-        css::CRIMSON,
-        css::GOLD,
-        css::ORANGE_RED,
-        css::SILVER,
-        css::SALMON,
-        css::YELLOW_GREEN,
-        css::WHITE,
-        css::RED,
+    // Spawn platforms (these will be replicated to clients)
+    let platform_positions = vec![
+        Vec3::new(-200.0, -100.0, 0.0),
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(200.0, -50.0, 0.0),
+        Vec3::new(-300.0, 50.0, 0.0),
+        Vec3::new(300.0, 100.0, 0.0),
     ];
-    let col = available_colors[player_n % available_colors.len()];
-    let angle: f32 = player_n as f32 * 5.0;
-    let x = 200.0 * angle.cos();
-    let y = 200.0 * angle.sin();
-
-    // Spawn the player entity
-    let player_ent = commands
-        .spawn((
-            Player::new(client_id, pick_player_name(client_id.to_bits())),
-            Score(0),
-            Name::new("Player"),
-            ActionState::<PlayerActions>::default(),
-            Position(Vec2::new(x, y)),
-            Rotation::default(),
-            LinearVelocity::default(),
-            AngularVelocity::default(),
-            // Replicate to all clients
-            Replicate::to_clients(NetworkTarget::All),
-            // Prediction for the owning client
-            PredictionTarget::to_clients(NetworkTarget::Single(client_id)),
-            // Interpolation for other clients
-            InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(client_id)),
-            // Control assignment
-            ControlledBy {
-                owner: trigger.target(),
-                lifetime: Default::default(),
-            },
-            PhysicsBundle::player_ship(),
-            Weapon::new((FIXED_TIMESTEP_HZ / 5.0) as u16),
-            ColorComponent(col.into()),
-        ))
-        .id();
-
-    info!("Created entity {player_ent:?} for client {client_id:?}");
-}
-
-/// Update player metrics (RTT, jitter) periodically
-fn update_player_metrics(
-    mut q: Query<&mut Player>,
-) {
-    // TODO: Update this when we have access to connection metrics
-    // For now, just keep the existing values
-    for mut player in q.iter_mut() {
-        // Metrics will be updated when connection system is properly integrated
-        player.rtt = Duration::from_millis(50);
-        player.jitter = Duration::from_millis(5);
-    }
-}
-
-fn init(mut commands: Commands) {
-    #[cfg(feature = "gui")]
-    {
-        commands.spawn(
-            TextBundle::from_section(
-                "Server",
-                TextStyle {
-                    font_size: 30.0,
-                    color: Color::WHITE,
-                    ..default()
-                },
-            )
-            .with_style(Style {
-                align_self: AlignSelf::End,
-                ..default()
-            }),
-        );
+    
+    for pos in platform_positions {
+        commands.spawn((
+            Platform,
+            Transform::from_translation(pos),
+            ReplicationTarget::default(),
+        ));
     }
     
-    // Spawn server-authoritative balls
-    const NUM_BALLS: usize = 6;
-    for i in 0..NUM_BALLS {
-        let radius = 10.0 + i as f32 * 4.0;
-        let angle: f32 = i as f32 * (TAU / NUM_BALLS as f32);
-        let pos = Vec2::new(125.0 * angle.cos(), 125.0 * angle.sin());
-        commands.spawn(BallBundle::new(radius, pos, css::GOLD.into()));
+    info!("World setup complete with {} platforms", 5);
+}
+
+fn handle_new_connections(
+    mut commands: Commands,
+    mut connections: EventReader<ConnectEvent>,
+) {
+    for event in connections.read() {
+        let client_id = event.client_id;
+        info!("New player connected: {:?}", client_id);
+        
+        // Random spawn position
+        let mut rng = rand::thread_rng();
+        let spawn_x = rng.gen_range(-300.0..300.0);
+        let spawn_pos = Vec3::new(spawn_x, 100.0, 0.0);
+        
+        // Random player color
+        let color = Color::srgb(
+            rng.gen_range(0.3..1.0),
+            rng.gen_range(0.3..1.0),
+            rng.gen_range(0.3..1.0),
+        );
+        
+        // Spawn player entity
+        let player_entity = commands.spawn((
+            Player::default(),
+            PlayerTransform {
+                translation: spawn_pos,
+            },
+            PlayerColor { color },
+            InputMap::<PlayerActions>::default(),
+            ActionState::<PlayerActions>::default(),
+            ReplicationTarget::default(),
+            client_id,
+        )).id();
+        
+        info!("Spawned player entity {:?} for client {:?} at position {:?}", 
+              player_entity, client_id, spawn_pos);
     }
 }
 
-fn pick_player_name(client_id: u64) -> String {
-    let index = (client_id % NAMES.len() as u64) as usize;
-    NAMES[index].to_string()
-}
-
-const NAMES: [&str; 35] = [
-    "Ellen Ripley",
-    "Sarah Connor",
-    "Neo",
-    "Trinity",
-    "Morpheus",
-    "John Connor",
-    "T-1000",
-    "Rick Deckard",
-    "Princess Leia",
-    "Han Solo",
-    "Spock",
-    "James T. Kirk",
-    "Hikaru Sulu",
-    "Nyota Uhura",
-    "Jean-Luc Picard",
-    "Data",
-    "Beverly Crusher",
-    "Seven of Nine",
-    "Doctor Who",
-    "Rose Tyler",
-    "Marty McFly",
-    "Doc Brown",
-    "Dana Scully",
-    "Fox Mulder",
-    "Riddick",
-    "Barbarella",
-    "HAL 9000",
-    "Megatron",
-    "Furiosa",
-    "Lois Lane",
-    "Clark Kent",
-    "Tony Stark",
-    "Natasha Romanoff",
-    "Bruce Banner",
-    "Mr. T",
-];
-
-/// Server handles scores when a bullet collides with a player
-pub(crate) fn handle_hit_event(
-    mut events: EventReader<BulletHitEvent>,
-    mut player_q: Query<(&Player, &mut Score)>,
+fn handle_disconnections(
+    mut commands: Commands,
+    mut disconnections: EventReader<DisconnectEvent>,
+    players: Query<(Entity, &ClientId)>,
 ) {
-    for ev in events.read() {
-        // Find victim and update scores
-        if let Some(victim_id) = ev.victim_client_id {
-            // Decrease victim's score
-            for (_player, mut score) in player_q.iter_mut() {
-                if _player.client_id == victim_id {
-                    score.0 -= 1;
-                    break;
-                }
-            }
-            
-            // Increase shooter's score
-            for (_player, mut score) in player_q.iter_mut() {
-                if _player.client_id == ev.bullet_owner {
-                    score.0 += 1;
-                    break;
-                }
+    for event in disconnections.read() {
+        let client_id = event.client_id;
+        info!("Player disconnected: {:?}", client_id);
+        
+        // Remove the player entity
+        for (entity, player_client_id) in players.iter() {
+            if *player_client_id == client_id {
+                commands.entity(entity).despawn();
+                info!("Removed player entity {:?} for disconnected client {:?}", 
+                      entity, client_id);
             }
         }
     }
 }
 
-/// Read inputs and move players
-pub(crate) fn player_movement(
-    mut q: Query<(&ActionState<PlayerActions>, ApplyInputsQuery), With<Player>>,
-    timeline: Single<&LocalTimeline, With<Server>>,
-) {
-    let tick = timeline.tick();
-    for (action_state, mut aiq) in q.iter_mut() {
-        apply_action_state_to_player_movement(action_state, 0, &mut aiq, tick);
-    }
-}
+// ==== CUSTOM SERVER LOGIC AREA - Add your game rules and server logic here ====
+// Example: Scoring system, match management, AI opponents, etc.
+// 
+// fn my_custom_server_logic(
+//     // your queries and resources
+// ) {
+//     // your server logic
+// }
+// ==== END CUSTOM SERVER LOGIC AREA ====

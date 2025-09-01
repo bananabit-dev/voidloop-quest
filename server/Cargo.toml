@@ -12,12 +12,14 @@ bevygap = ["dep:bevygap_server_plugin"]
 
 [dependencies]
 bevy.workspace = true
-shared = {path = "../shared", features = ["server"]}
+shared = {path = "../shared"}
 lightyear.workspace = true
 avian2d.workspace = true
 serde.workspace = true
 leafwing-input-manager.workspace = true
 bevygap_server_plugin = {workspace = true, optional = true}
+clap.workspace = true
+rand = "0.8"
 
 [lints]
 workspace = true
