@@ -9,6 +9,33 @@ This uses RJ's (work-in-progress) [Bevygap](https://github.com/RJ/bevygap) proje
 
 A learning exercise / starter kit / tutorial.
 
+## 🚀 Quick Start
+
+### Automated Setup (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/bananabit-dev/voidloop-quest.git
+cd voidloop-quest
+
+# Run the automated setup script
+./dev-setup.sh
+
+# Run locally (no networking)
+cargo run --no-default-features -p server    # Terminal 1
+cargo run --no-default-features -p client    # Terminal 2
+```
+
+### Manual Setup
+If you prefer manual setup, install required system dependencies:
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update && sudo apt install -y libudev-dev pkg-config
+```
+
+**Other platforms:** See the [Development Setup Guide](DEVELOPMENT.md) for detailed instructions.
+
+📖 **For detailed setup instructions, troubleshooting, and development workflow, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
 # Live Demo
 
