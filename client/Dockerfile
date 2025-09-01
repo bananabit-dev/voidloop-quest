@@ -53,7 +53,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target \
     cargo chef cook --release --target wasm32-unknown-unknown \
-    --package client \
+    --package voidloop-quest-client \
     --recipe-path /app/recipe.json
 
 # Copy the entire workspace
