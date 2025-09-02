@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use client_plugin::ClientPlugin;
 
 mod client_plugin;
+mod screens;
 
 fn main() {
      println!(r#"
