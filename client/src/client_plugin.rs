@@ -3,6 +3,7 @@ use bevygap_client_plugin::{BevygapClientPlugin, prelude::BevygapConnectExt};
 use leafwing_input_manager::prelude::*;
 
 use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
+use crate::screens::{LobbyPlugin, AppState};
 
 #[derive(Resource, Default)]
 struct FloorSpawned(bool);
@@ -18,7 +19,7 @@ impl Plugin for ClientPlugin {
         // Basic Bevy plugins
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Simple Platformer".to_string(),
+                title: "Voidloop Quest".to_string(),
                 canvas: Some("#game".to_string()),
                 prevent_default_event_handling: false,
                 ..default()
@@ -32,22 +33,26 @@ impl Plugin for ClientPlugin {
         // Networking plugins
         app.add_plugins(BevygapClientPlugin);
         
+        // Lobby system - handles 4-player lobby UI and matchmaking
+        app.add_plugins(LobbyPlugin);
+        
         // Shared game logic
         app.add_plugins(SharedPlugin);
         
-        // Client-specific systems
-        app.add_systems(Startup, setup_camera);
+        // Game setup systems (only run when in game)
+        app.add_systems(OnEnter(AppState::InGame), setup_camera);
         app.add_systems(Update, (
             spawn_player_visual,
             spawn_platform_visual,
             update_player_visual,
             handle_player_spawn,
-        ));
+        ).run_if(in_state(AppState::InGame)));
         app.insert_resource(FloorSpawned::default());
 
-        app.add_systems(Startup, |mut commands: Commands| {
-            commands.bevygap_connect_client();
-        });
+        // Remove auto-connect - now handled by lobby UI
+        // app.add_systems(Startup, |mut commands: Commands| {
+        //     commands.bevygap_connect_client();
+        // });
         
         // ==== CUSTOM CLIENT SYSTEMS AREA - Add your client-specific systems here ====
         // Example: UI, effects, client-side predictions, etc.
