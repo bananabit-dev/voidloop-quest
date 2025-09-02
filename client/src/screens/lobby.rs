@@ -101,7 +101,7 @@ fn setup_lobby_ui(mut commands: Commands) {
             padding: UiRect::all(Val::Percent(2.0)), // Use percentage instead of Vw
             ..default()
         },
-        BackgroundColor(Color::srgb(0.1, 0.1, 0.1)),
+        BackgroundColor(Color::srgb(0.15, 0.15, 0.15)), // Slightly lighter for better contrast
     )).with_children(|parent| {
         // Title - responsive font size
         parent.spawn((
@@ -110,7 +110,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                 font_size: 28.0, // Smaller font for better tablet support
                 ..default()
             },
-            TextColor(Color::WHITE),
+            TextColor(Color::WHITE), // Back to white
             Node {
                 margin: UiRect::all(Val::Px(15.0)), // Reasonable pixel margin
                 max_width: Val::Percent(90.0), // Prevent overflow
