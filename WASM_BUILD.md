@@ -23,8 +23,8 @@ If you prefer to build manually:
 # Set proper RUSTFLAGS for WASM compilation
 export RUSTFLAGS="--cfg getrandom_backend=\"wasm_js\""
 
-# Build the WASM binary
-cargo build --release --target wasm32-unknown-unknown --package voidloop-quest-client
+# Build the WASM binary (note: --no-default-features is required for WASM)
+cargo build --release --target wasm32-unknown-unknown --package voidloop-quest-client --no-default-features
 
 # Generate WASM bindings
 wasm-bindgen --no-typescript --target web \
@@ -51,6 +51,7 @@ Then open http://localhost:8000 in your browser.
 
 ## Notes
 
+- **Important**: WASM builds must use `--no-default-features` to exclude networking features (bevygap) that require tokio with unsupported features for WASM
 - The client expects a canvas element with ID `#game`
 - The application will attempt to connect to a matchmaker WebSocket (expected to fail in local development)
 - WebGL2 warnings in the console are normal and don't indicate errors

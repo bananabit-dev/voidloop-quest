@@ -118,6 +118,7 @@ pub enum LobbyEvent {
     // New events for real matchmaking
     StartMatchmaking,
     LobbyCreated(String), // lobby name
+    #[cfg(feature = "bevygap")]
     LobbyDeployed(LobbyReadResponse),
     LobbyDeploymentFailed(String),
     ConnectedToServer,
@@ -825,6 +826,7 @@ fn handle_lobby_events(
                 info!("🏠 Lobby created: {}", lobby_name);
                 // Continue showing searching status while deploying
             },
+            #[cfg(feature = "bevygap")]
             LobbyEvent::LobbyDeployed(lobby_response) => {
                 info!("🚀 Lobby deployed successfully! Server URL: {}", lobby_response.url);
                 lobby_ui.is_searching = false;
@@ -1024,6 +1026,7 @@ fn handle_matchmaking_events(
                         lobby_state.is_deploying = false;
                         
                         lobby_events_writer.send(LobbyEvent::LobbyCreated(created_name));
+                        #[cfg(feature = "bevygap")]
                         lobby_events_writer.send(LobbyEvent::LobbyDeployed(deploy_response));
                         
                         // Now attempt to connect via BevyGap
