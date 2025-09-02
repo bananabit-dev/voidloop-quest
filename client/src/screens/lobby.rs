@@ -86,8 +86,39 @@ impl Plugin for LobbyPlugin {
 }
 
 // 🏠 Initialize lobby system
-fn setup_lobby_ui(mut commands: Commands) {
-    info!("🏠 Setting up lobby UI");
+fn setup_lobby_ui(mut commands: Commands, _asset_server: Res<AssetServer>) {
+    info!("🏠 Setting up lobby UI - DEBUG");
+    
+    // DEBUG: Let's try a very simple colored rectangle first
+    commands.spawn((
+        Node {
+            width: Val::Px(200.0),
+            height: Val::Px(100.0),
+            position_type: PositionType::Absolute,
+            top: Val::Px(50.0),
+            left: Val::Px(50.0),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(1.0, 0.0, 0.0)), // Bright red rectangle
+    ));
+    
+    // DEBUG: Simple test text element
+    commands.spawn((
+        Text::new("HELLO WORLD"),
+        TextFont {
+            font_size: 32.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.0, 1.0, 0.0)), // Bright green text
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(200.0),
+            left: Val::Px(50.0),
+            ..default()
+        },
+    ));
+    
+    info!("🏠 Debug UI elements spawned");
     
     // Spawn lobby UI with responsive container
     commands.spawn((
@@ -101,7 +132,7 @@ fn setup_lobby_ui(mut commands: Commands) {
             padding: UiRect::all(Val::Percent(2.0)), // Use percentage instead of Vw
             ..default()
         },
-        BackgroundColor(Color::srgb(0.15, 0.15, 0.15)), // Slightly lighter for better contrast
+        BackgroundColor(Color::srgb(0.2, 0.1, 0.3)), // Lighter purple background for better text visibility
     )).with_children(|parent| {
         // Title - responsive font size
         parent.spawn((
@@ -110,13 +141,25 @@ fn setup_lobby_ui(mut commands: Commands) {
                 font_size: 28.0, // Smaller font for better tablet support
                 ..default()
             },
-            TextColor(Color::WHITE), // Back to white
+            TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text
             Node {
                 margin: UiRect::all(Val::Px(15.0)), // Reasonable pixel margin
                 max_width: Val::Percent(90.0), // Prevent overflow
                 ..default()
             },
         ));
+        
+        // TODO: Add logo back once asset loading is fixed
+        // Logo - responsive sizing
+        // parent.spawn((
+        //     ImageNode::new(asset_server.load("logo.svg")),
+        //     Node {
+        //         width: Val::Px(200.0),
+        //         height: Val::Px(150.0),
+        //         margin: UiRect::all(Val::Px(10.0)),
+        //         ..default()
+        //     },
+        // ));
         
         // Player count - responsive sizing
         parent.spawn((
@@ -125,7 +168,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                 font_size: 16.0, // Smaller font
                 ..default()
             },
-            TextColor(Color::srgb(0.8, 0.8, 0.8)),
+            TextColor(Color::srgb(0.9, 0.9, 0.9)), // Bright gray text
             Node {
                 margin: UiRect::all(Val::Px(8.0)), // Smaller margin
                 ..default()
@@ -157,7 +200,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(if i == 0 { Color::srgb(0.3, 0.6, 0.3) } else { Color::srgb(0.3, 0.3, 0.3) }),
+                    BackgroundColor(if i == 0 { Color::srgb(0.57, 0.23, 1.0) } else { Color::srgb(0.27, 0.0, 0.33) }), // Purple theme
                     ModeButton(mode.to_string()),
                 )).with_children(|button_parent| {
                     button_parent.spawn((
@@ -166,7 +209,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                             font_size: 12.0, // Smaller font
                             ..default()
                         },
-                        TextColor(Color::WHITE),
+                        TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text for buttons
                     ));
                 });
             }
@@ -183,7 +226,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.2, 0.7, 0.2)),
+            BackgroundColor(Color::srgb(0.57, 0.23, 1.0)), // Bright purple for connect button
             ConnectButton,
         )).with_children(|button_parent| {
             button_parent.spawn((
@@ -192,7 +235,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                     font_size: 16.0, // Reasonable font size
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text for connect button
                 ConnectButtonText,
             ));
         });
@@ -204,7 +247,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                 font_size: 11.0, // Smaller text
                 ..default()
             },
-            TextColor(Color::srgb(0.6, 0.6, 0.6)),
+            TextColor(Color::srgb(0.8, 0.8, 0.8)), // Bright gray for instructions
             Node {
                 margin: UiRect::all(Val::Px(10.0)),
                 max_width: Val::Percent(85.0), // Prevent text overflow
@@ -257,9 +300,9 @@ fn handle_lobby_input(
             },
             Interaction::Hovered => {
                 if mode_button.is_some() {
-                    *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.4));
+                    *color = BackgroundColor(Color::srgb(0.45, 0.15, 0.55)); // Purple hover for mode buttons
                 } else if connect_button.is_some() {
-                    *color = BackgroundColor(Color::srgb(0.3, 0.8, 0.3));
+                    *color = BackgroundColor(Color::srgb(0.7, 0.3, 1.0)); // Lighter purple hover for connect button
                 }
             },
             Interaction::None => {
@@ -270,12 +313,12 @@ fn handle_lobby_input(
                         return;
                     };
                     if mode_button.0 == lobby_ui.selected_mode {
-                        *color = BackgroundColor(Color::srgb(0.3, 0.6, 0.3));
+                        *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for selected
                     } else {
-                        *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
+                        *color = BackgroundColor(Color::srgb(0.27, 0.0, 0.33)); // Dark purple for unselected
                     }
                 } else if connect_button.is_some() {
-                    *color = BackgroundColor(Color::srgb(0.2, 0.7, 0.2));
+                    *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for connect button
                 }
             }
         }
@@ -299,13 +342,13 @@ fn update_lobby_ui(
         if let Ok((mut text, mut color)) = connect_button_query.single_mut() {
             if lobby_ui.is_searching {
                 **text = "SEARCHING...".to_string();
-                *color = BackgroundColor(Color::srgb(0.7, 0.7, 0.2));
+                *color = BackgroundColor(Color::srgb(0.8, 0.4, 0.2)); // Orange for searching state
             } else if lobby_ui.current_players >= lobby_config.max_players {
                 **text = "LOBBY FULL".to_string();
-                *color = BackgroundColor(Color::srgb(0.7, 0.2, 0.2));
+                *color = BackgroundColor(Color::srgb(0.7, 0.2, 0.2)); // Red for full state
             } else {
                 **text = "FIND MATCH".to_string();
-                *color = BackgroundColor(Color::srgb(0.2, 0.7, 0.2));
+                *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for normal state
             }
         }
     }
@@ -344,9 +387,9 @@ fn handle_lobby_events(
                 // Update button colors
                 for (mut color, mode_button) in mode_button_query.iter_mut() {
                     if mode_button.0 == *mode {
-                        *color = BackgroundColor(Color::srgb(0.3, 0.6, 0.3));
+                        *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for selected
                     } else {
-                        *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
+                        *color = BackgroundColor(Color::srgb(0.27, 0.0, 0.33)); // Dark purple for unselected
                     }
                 }
             }

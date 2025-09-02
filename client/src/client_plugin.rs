@@ -86,7 +86,14 @@ fn get_matchmaker_url() -> String {
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn(Camera2d::default());
+    // Spawn 2D camera with UI support
+    commands.spawn((
+        Camera2d::default(),
+        Camera {
+            clear_color: ClearColorConfig::Default,
+            ..default()
+        },
+    ));
     
     // Spawn some platforms for the level
     spawn_platforms(&mut commands);
