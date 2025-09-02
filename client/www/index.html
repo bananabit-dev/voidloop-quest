@@ -1,21 +1,45 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <title>Voidloop quest</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voidloop Quest</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100vh;
+        }
+        #loading {
+            position: absolute;
+            color: white;
+            font-family: monospace;
+            font-size: 24px;
+        }
+    </style>
 </head>
-
-<body style="margin: 0px;">
+<body>
+    <div id="loading">Loading...</div>
+    <canvas id="game"></canvas>
     <script type="module">
-        // window.MATCHMAKER_URL = "ws://127.0.0.1:3000/matchmaker/ws";
-        import init from './voidloop-quest.js'
-
-        init().catch((error) => {
-            if (!error.message.startsWith("Using exceptions for control flow, don't mind me. This isn't actually an error!")) {
-                throw error;
-            }
-        });
+        import init from './voidloop-quest.js';
+        
+        async function run() {
+            await init();
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        run().catch(console.error);
     </script>
 </body>
-
 </html>
