@@ -830,7 +830,7 @@ fn get_matchmaker_url() -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        "ws://localhost:3000/matchmaker/ws".to_string()
+        "ws://voidloop.quest:3000/matchmaker/ws".to_string()
     }
 }
 
