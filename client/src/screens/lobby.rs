@@ -101,7 +101,7 @@ fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             padding: UiRect::all(Val::Percent(2.0)), // Use percentage instead of Vw
             ..default()
         },
-        BackgroundColor(Color::srgb(0.08, 0.05, 0.12)), // Dark purple background for better contrast
+        BackgroundColor(Color::srgb(0.2, 0.1, 0.3)), // Lighter purple background for better text visibility
     )).with_children(|parent| {
         // Title - responsive font size
         parent.spawn((
@@ -110,7 +110,7 @@ fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 font_size: 28.0, // Smaller font for better tablet support
                 ..default()
             },
-            TextColor(Color::WHITE), // Back to white
+            TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text
             Node {
                 margin: UiRect::all(Val::Px(15.0)), // Reasonable pixel margin
                 max_width: Val::Percent(90.0), // Prevent overflow
@@ -118,16 +118,17 @@ fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
         ));
         
+        // TODO: Add logo back once asset loading is fixed
         // Logo - responsive sizing
-        parent.spawn((
-            ImageNode::new(asset_server.load("logo.svg")),
-            Node {
-                width: Val::Px(200.0),
-                height: Val::Px(150.0),
-                margin: UiRect::all(Val::Px(10.0)),
-                ..default()
-            },
-        ));
+        // parent.spawn((
+        //     ImageNode::new(asset_server.load("logo.svg")),
+        //     Node {
+        //         width: Val::Px(200.0),
+        //         height: Val::Px(150.0),
+        //         margin: UiRect::all(Val::Px(10.0)),
+        //         ..default()
+        //     },
+        // ));
         
         // Player count - responsive sizing
         parent.spawn((
@@ -136,7 +137,7 @@ fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 font_size: 16.0, // Smaller font
                 ..default()
             },
-            TextColor(Color::srgb(0.8, 0.8, 0.8)),
+            TextColor(Color::srgb(0.9, 0.9, 0.9)), // Bright gray text
             Node {
                 margin: UiRect::all(Val::Px(8.0)), // Smaller margin
                 ..default()
@@ -177,7 +178,7 @@ fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                             font_size: 12.0, // Smaller font
                             ..default()
                         },
-                        TextColor(Color::WHITE),
+                        TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text for buttons
                     ));
                 });
             }
@@ -203,7 +204,7 @@ fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     font_size: 16.0, // Reasonable font size
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text for connect button
                 ConnectButtonText,
             ));
         });
@@ -215,7 +216,7 @@ fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 font_size: 11.0, // Smaller text
                 ..default()
             },
-            TextColor(Color::srgb(0.6, 0.6, 0.6)),
+            TextColor(Color::srgb(0.8, 0.8, 0.8)), // Bright gray for instructions
             Node {
                 margin: UiRect::all(Val::Px(10.0)),
                 max_width: Val::Percent(85.0), // Prevent text overflow
