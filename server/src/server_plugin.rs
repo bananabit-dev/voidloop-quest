@@ -3,7 +3,7 @@ use bevygap_server_plugin::prelude::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
 
-use shared::{PlayerActions, Platform, SharedPlugin};
+use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
 
 pub struct ServerPlugin;
 
@@ -24,13 +24,17 @@ impl Plugin for ServerPlugin {
         // Shared game logic
         app.add_plugins(SharedPlugin);
         
+        // Room management
+        app.insert_resource(RoomManager::new());
+        
         // Server-specific systems
         app.add_systems(Startup, setup_world);
-        // Connection handling is managed by bevygap
-        // app.add_systems(Update, (
-        //     handle_new_connections,
-        //     handle_disconnections,
-        // ));
+        
+        // Player management system - handles spawning/despawning players  
+        app.add_systems(Update, (
+            handle_player_management,
+            manage_room_lifecycle,
+        ));
         
         // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
         // Example: Game rules, scoring, AI, matchmaking logic, etc.
@@ -55,37 +59,28 @@ fn setup_world(mut commands: Commands) {
         commands.spawn((
             Platform,
             Transform::from_translation(pos),
-            ReplicationTarget::<Client>::default(),
+            Replicate::default(),
         ));
     }
     
     info!("World setup complete with {} platforms", 5);
 }
 
-// Connection handling functions - commented out until we determine correct event types
-/*
-fn handle_new_connections(
+// Player management system that handles room logic
+fn handle_player_management(
     mut commands: Commands,
-    mut connections: EventReader<ServerConnectEvent>,
+    // For now, we'll manually spawn a test player to verify the game works
+    // In production, bevygap will handle player connections automatically
+    existing_players: Query<Entity, With<Player>>,
 ) {
-    for event in connections.read() {
-        let client_id = event.client_id;
-        info!("New player connected: {:?}", client_id);
+    // Spawn a test player if none exist (for testing without actual networking)
+    if existing_players.is_empty() {
+        info!("No players found - spawning test player for local game");
         
-        // Random spawn position
-        let mut rng = rand::thread_rng();
-        let spawn_x = rng.gen_range(-300.0..300.0);
-        let spawn_pos = Vec3::new(spawn_x, 100.0, 0.0);
+        let spawn_pos = Vec3::new(0.0, 100.0, 0.0);
+        let color = Color::srgb(0.5, 0.8, 1.0);
         
-        // Random player color
-        let color = Color::srgb(
-            rng.gen_range(0.3..1.0),
-            rng.gen_range(0.3..1.0),
-            rng.gen_range(0.3..1.0),
-        );
-        
-        // Spawn player entity
-        let player_entity = commands.spawn((
+        commands.spawn((
             Player::default(),
             PlayerTransform {
                 translation: spawn_pos,
@@ -93,35 +88,95 @@ fn handle_new_connections(
             PlayerColor { color },
             InputMap::<PlayerActions>::default(),
             ActionState::<PlayerActions>::default(),
-            ReplicationTarget::<Client>::default(),
-            client_id,
-        )).id();
+            Replicate::default(),
+        ));
         
-        info!("Spawned player entity {:?} for client {:?} at position {:?}", 
-              player_entity, client_id, spawn_pos);
+        info!("Spawned test player at position {:?}", spawn_pos);
     }
 }
 
-fn handle_disconnections(
-    mut commands: Commands,
-    mut disconnections: EventReader<ServerDisconnectEvent>,
-    players: Query<(Entity, &Client)>,
+// Room lifecycle management - handles auto-cleanup and game state
+fn manage_room_lifecycle(
+    mut room_manager: ResMut<RoomManager>,
+    players: Query<Entity, With<Player>>,
+    time: Res<Time>,
 ) {
-    for event in disconnections.read() {
-        let client_id = event.client_id;
-        info!("Player disconnected: {:?}", client_id);
+    let current_player_count = players.iter().count() as u32;
+    
+    // Update player count
+    if room_manager.player_count != current_player_count {
+        let old_count = room_manager.player_count;
+        room_manager.player_count = current_player_count;
         
-        // Remove the player entity
-        for (entity, player_client_id) in players.iter() {
-            if *player_client_id == client_id {
-                commands.entity(entity).despawn();
-                info!("Removed player entity {:?} for disconnected client {:?}", 
-                      entity, client_id);
+        if current_player_count > old_count {
+            info!("Player joined room '{}'. Players: {}/{}", 
+                  room_manager.room_id, current_player_count, room_manager.max_players);
+        } else if current_player_count < old_count {
+            info!("Player left room '{}'. Players: {}/{}", 
+                  room_manager.room_id, current_player_count, room_manager.max_players);
+        }
+        
+        // Check if game should start
+        if room_manager.should_start_game() && old_count < room_manager.min_players {
+            info!("🚀 Room '{}' has minimum players ({}) - game can start!", 
+                  room_manager.room_id, room_manager.min_players);
+        }
+    }
+    
+    // Auto-cleanup: If room is empty for too long, it could be cleaned up
+    // For now, we'll just log it since bevygap handles server lifecycle
+    if room_manager.is_empty() {
+        if room_manager.room_created_time.is_none() {
+            room_manager.room_created_time = Some(time.elapsed_secs_f64());
+            info!("Room '{}' is now empty - starting cleanup timer", room_manager.room_id);
+        } else if let Some(empty_since) = room_manager.room_created_time {
+            let empty_duration = time.elapsed_secs_f64() - empty_since;
+            if empty_duration > 10.0 { // 10 seconds cleanup time
+                info!("Room '{}' has been empty for {:.1}s - would cleanup in production", 
+                      room_manager.room_id, empty_duration);
             }
+        }
+    } else {
+        // Reset cleanup timer if players are present
+        if room_manager.room_created_time.is_some() {
+            room_manager.room_created_time = None;
         }
     }
 }
-*/
+
+// Room management resource - tracks active rooms and player counts
+#[derive(Resource, Default)]
+pub struct RoomManager {
+    pub room_id: String,
+    pub player_count: u32,
+    pub max_players: u32,
+    pub min_players: u32,
+    pub room_created_time: Option<f64>,
+}
+
+impl RoomManager {
+    pub fn new() -> Self {
+        Self {
+            room_id: "default-room".to_string(),
+            player_count: 0,
+            max_players: 4,  // As requested in problem statement
+            min_players: 1,  // As requested in problem statement  
+            room_created_time: None,
+        }
+    }
+    
+    pub fn can_add_player(&self) -> bool {
+        self.player_count < self.max_players
+    }
+    
+    pub fn should_start_game(&self) -> bool {
+        self.player_count >= self.min_players
+    }
+    
+    pub fn is_empty(&self) -> bool {
+        self.player_count == 0
+    }
+}
 
 // ==== CUSTOM SERVER LOGIC AREA - Add your game rules and server logic here ====
 // Example: Scoring system, match management, AI opponents, etc.

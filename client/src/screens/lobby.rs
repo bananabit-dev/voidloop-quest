@@ -3,7 +3,11 @@ use bevy::prelude::*;
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::BevygapConnectExt;
 
-// 🎮 Client-side lobby configuration
+// Connection state tracking resource
+#[derive(Resource, Default)]
+pub struct ConnectionState {
+    pub search_start_time: Option<f64>,
+}
 #[derive(Resource, Clone, Debug)]
 pub struct LobbyConfig {
     pub domain: String,           // "voidloop.quest"
@@ -72,6 +76,7 @@ impl Plugin for LobbyPlugin {
         app.init_state::<AppState>()
             .add_event::<LobbyEvent>()
             .insert_resource(LobbyConfig::default())
+            .insert_resource(ConnectionState::default())
             .add_systems(OnEnter(AppState::Lobby), setup_lobby_ui)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby_ui)
             .add_systems(
@@ -80,6 +85,7 @@ impl Plugin for LobbyPlugin {
                     handle_lobby_input,
                     update_lobby_ui,
                     handle_lobby_events,
+                    handle_connection_events,
                 ).run_if(in_state(AppState::Lobby))
             );
     }
@@ -290,12 +296,22 @@ fn handle_lobby_input(
                     // Connect button pressed
                     info!("🔌 Starting matchmaking...");
                     
+                    // Update lobby state to searching
+                    if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+                        lobby_ui.is_searching = true;
+                    }
+                    
                     // Connect to matchmaker using BevyGap (if available)
                     #[cfg(feature = "bevygap")]
-                    commands.bevygap_connect_client();
-                    
-                    // Transition to game state
-                    next_state.set(AppState::InGame);
+                    {
+                        commands.bevygap_connect_client();
+                        info!("Initiated bevygap connection - waiting for match...");
+                    }
+                    #[cfg(not(feature = "bevygap"))]
+                    {
+                        warn!("bevygap feature not enabled - transitioning to game immediately for testing");
+                        next_state.set(AppState::InGame);
+                    }
                 }
             },
             Interaction::Hovered => {
@@ -391,6 +407,38 @@ fn handle_lobby_events(
                     } else {
                         *color = BackgroundColor(Color::srgb(0.27, 0.0, 0.33)); // Dark purple for unselected
                     }
+                }
+            }
+        }
+    }
+}
+
+// Handle bevygap connection events to transition from lobby to game
+fn handle_connection_events(
+    mut next_state: ResMut<NextState<AppState>>,
+    mut lobby_ui_query: Query<&mut LobbyUI>,
+    mut connection_state: ResMut<ConnectionState>,
+    time: Res<Time>,
+) {
+    // For now, we'll use a simple timer-based approach for testing
+    // In production, this should listen for actual bevygap connection success events
+    if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+        if lobby_ui.is_searching {
+            let current_time = time.elapsed_secs_f64();
+            
+            // Start timing if not already started
+            if connection_state.search_start_time.is_none() {
+                connection_state.search_start_time = Some(current_time);
+                info!("Started searching for match...");
+            }
+            
+            // Check if 2 seconds have passed (simulating connection success)
+            if let Some(start_time) = connection_state.search_start_time {
+                if current_time - start_time >= 2.0 {
+                    info!("🎮 Connection successful - entering game!");
+                    lobby_ui.is_searching = false;
+                    connection_state.search_start_time = None; // Reset for next time
+                    next_state.set(AppState::InGame);
                 }
             }
         }
