@@ -52,6 +52,7 @@ Then open http://localhost:8000 in your browser.
 ## Notes
 
 - **Important**: WASM builds must use `--no-default-features` to exclude networking features (bevygap) that require tokio with unsupported features for WASM
+- **WebGL2 Backend**: The client automatically enables WebGL2 features for WASM builds to ensure proper rendering backend support
 - The client expects a canvas element with ID `#game`
 - The application will attempt to connect to a matchmaker WebSocket (expected to fail in local development)
 - WebGL2 warnings in the console are normal and don't indicate errors
