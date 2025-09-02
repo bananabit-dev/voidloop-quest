@@ -86,8 +86,39 @@ impl Plugin for LobbyPlugin {
 }
 
 // 🏠 Initialize lobby system
-fn setup_lobby_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-    info!("🏠 Setting up lobby UI");
+fn setup_lobby_ui(mut commands: Commands, _asset_server: Res<AssetServer>) {
+    info!("🏠 Setting up lobby UI - DEBUG");
+    
+    // DEBUG: Let's try a very simple colored rectangle first
+    commands.spawn((
+        Node {
+            width: Val::Px(200.0),
+            height: Val::Px(100.0),
+            position_type: PositionType::Absolute,
+            top: Val::Px(50.0),
+            left: Val::Px(50.0),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(1.0, 0.0, 0.0)), // Bright red rectangle
+    ));
+    
+    // DEBUG: Simple test text element
+    commands.spawn((
+        Text::new("HELLO WORLD"),
+        TextFont {
+            font_size: 32.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.0, 1.0, 0.0)), // Bright green text
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(200.0),
+            left: Val::Px(50.0),
+            ..default()
+        },
+    ));
+    
+    info!("🏠 Debug UI elements spawned");
     
     // Spawn lobby UI with responsive container
     commands.spawn((
