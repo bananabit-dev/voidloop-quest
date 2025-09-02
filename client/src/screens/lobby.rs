@@ -38,6 +38,8 @@ pub struct LobbyUI {
     pub selected_mode: String,
     pub is_host: bool,
     pub is_searching: bool,
+    pub room_id: String,
+    pub lobby_mode: LobbyMode,
 }
 
 impl LobbyUI {
@@ -47,8 +49,20 @@ impl LobbyUI {
             selected_mode: "casual".to_string(),
             is_host: false,
             is_searching: false,
+            room_id: String::new(),
+            lobby_mode: LobbyMode::Main,
         }
     }
+}
+
+// Different lobby screens/modes
+#[derive(Default, Clone, PartialEq)]
+pub enum LobbyMode {
+    #[default]
+    Main,
+    CreateRoom,
+    JoinRoom,
+    InRoom,
 }
 
 // 🎮 Game states
@@ -66,6 +80,11 @@ pub enum LobbyEvent {
     PlayerLeft(u32),
     StartGame,
     SelectMode(String),
+    CreateRoom,
+    JoinRoom,
+    EnterRoomId(String),
+    LeaveRoom,
+    StartLocalGame,
 }
 
 // 🎯 Lobby plugin
@@ -83,7 +102,8 @@ impl Plugin for LobbyPlugin {
                 Update,
                 (
                     handle_lobby_input,
-                    update_lobby_ui,
+                    update_lobby_display,
+                    update_simple_ui,
                     handle_lobby_events,
                     handle_connection_events,
                 ).run_if(in_state(AppState::Lobby))
@@ -95,38 +115,7 @@ impl Plugin for LobbyPlugin {
 fn setup_lobby_ui(mut commands: Commands, _asset_server: Res<AssetServer>) {
     info!("🏠 Setting up lobby UI - DEBUG");
     
-    // DEBUG: Let's try a very simple colored rectangle first
-    commands.spawn((
-        Node {
-            width: Val::Px(200.0),
-            height: Val::Px(100.0),
-            position_type: PositionType::Absolute,
-            top: Val::Px(50.0),
-            left: Val::Px(50.0),
-            ..default()
-        },
-        BackgroundColor(Color::srgb(1.0, 0.0, 0.0)), // Bright red rectangle
-    ));
-    
-    // DEBUG: Simple test text element
-    commands.spawn((
-        Text::new("HELLO WORLD"),
-        TextFont {
-            font_size: 32.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.0, 1.0, 0.0)), // Bright green text
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(200.0),
-            left: Val::Px(50.0),
-            ..default()
-        },
-    ));
-    
-    info!("🏠 Debug UI elements spawned");
-    
-    // Spawn lobby UI with responsive container
+    // Spawn main lobby UI container
     commands.spawn((
         LobbyUI::new(),
         Node {
@@ -135,139 +124,440 @@ fn setup_lobby_ui(mut commands: Commands, _asset_server: Res<AssetServer>) {
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            padding: UiRect::all(Val::Percent(2.0)), // Use percentage instead of Vw
+            padding: UiRect::all(Val::Percent(2.0)),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.2, 0.1, 0.3)), // Lighter purple background for better text visibility
-    )).with_children(|parent| {
-        // Title - responsive font size
-        parent.spawn((
-            Text::new("🎮 Voidloop Quest Lobby"),
-            TextFont {
-                font_size: 28.0, // Smaller font for better tablet support
-                ..default()
-            },
-            TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text
-            Node {
-                margin: UiRect::all(Val::Px(15.0)), // Reasonable pixel margin
-                max_width: Val::Percent(90.0), // Prevent overflow
-                ..default()
-            },
-        ));
+        BackgroundColor(Color::srgb(0.1, 0.1, 0.2)), // Dark blue background
+        LobbyContainer,
+    ));
+}
+
+// Update lobby UI based on current mode
+fn update_lobby_display(
+    mut commands: Commands,
+    lobby_ui_query: Query<(&LobbyUI, Entity), (With<LobbyContainer>, Changed<LobbyUI>)>,
+    existing_ui: Query<Entity, (With<LobbyUIElements>, Without<LobbyContainer>)>,
+) {
+    if let Ok((lobby_ui, container_entity)) = lobby_ui_query.single() {
+        // Clear existing UI elements
+        for entity in existing_ui.iter() {
+            commands.entity(entity).despawn();
+        }
         
-        // TODO: Add logo back once asset loading is fixed
-        // Logo - responsive sizing
-        // parent.spawn((
-        //     ImageNode::new(asset_server.load("logo.svg")),
-        //     Node {
-        //         width: Val::Px(200.0),
-        //         height: Val::Px(150.0),
-        //         margin: UiRect::all(Val::Px(10.0)),
-        //         ..default()
-        //     },
-        // ));
-        
-        // Player count - responsive sizing
-        parent.spawn((
-            Text::new("Players: 1/4"),
-            TextFont {
-                font_size: 16.0, // Smaller font
-                ..default()
+        // Rebuild UI based on current mode
+        match lobby_ui.lobby_mode {
+            LobbyMode::Main => {
+                spawn_main_lobby_ui(&mut commands, container_entity, lobby_ui);
             },
-            TextColor(Color::srgb(0.9, 0.9, 0.9)), // Bright gray text
-            Node {
-                margin: UiRect::all(Val::Px(8.0)), // Smaller margin
-                ..default()
+            LobbyMode::CreateRoom => {
+                spawn_create_room_ui(&mut commands, container_entity, lobby_ui);
             },
-            PlayerCountText,
-        ));
-        
-        // Game mode selection - responsive layout
-        parent.spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                flex_wrap: FlexWrap::Wrap, // Allow wrapping on small screens
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                margin: UiRect::all(Val::Px(12.0)),
-                max_width: Val::Percent(90.0), // Prevent overflow
-                ..default()
+            LobbyMode::JoinRoom => {
+                spawn_join_room_ui(&mut commands, container_entity, lobby_ui);
             },
-        )).with_children(|mode_parent| {
-            let modes = ["casual", "ranked", "custom"];
-            for (i, mode) in modes.iter().enumerate() {
-                mode_parent.spawn((
-                    Button,
-                    Node {
-                        width: Val::Px(100.0), // Fixed but smaller width
-                        height: Val::Px(40.0), // Fixed but smaller height
-                        margin: UiRect::all(Val::Px(4.0)), // Smaller margin
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    BackgroundColor(if i == 0 { Color::srgb(0.57, 0.23, 1.0) } else { Color::srgb(0.27, 0.0, 0.33) }), // Purple theme
-                    ModeButton(mode.to_string()),
-                )).with_children(|button_parent| {
-                    button_parent.spawn((
-                        Text::new(mode.to_uppercase()),
-                        TextFont {
-                            font_size: 12.0, // Smaller font
-                            ..default()
-                        },
-                        TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text for buttons
-                    ));
-                });
-            }
-        });
-        
-        // Connect button - responsive sizing
-        parent.spawn((
+            LobbyMode::InRoom => {
+                spawn_in_room_ui(&mut commands, container_entity, lobby_ui);
+            },
+        }
+    }
+}
+
+fn spawn_main_lobby_ui(commands: &mut Commands, container_entity: Entity, _lobby_ui: &LobbyUI) {
+    let title_entity = commands.spawn((
+        Text::new("🎮 Voidloop Quest"),
+        TextFont { font_size: 32.0, ..default() },
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Node { margin: UiRect::all(Val::Px(20.0)), ..default() },
+        LobbyUIElements,
+    )).id();
+    
+    // Mode buttons container
+    let mode_container = commands.spawn((
+        Node {
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::Center,
+            margin: UiRect::all(Val::Px(15.0)),
+            ..default()
+        },
+        LobbyUIElements,
+    )).id();
+    
+    // Add mode buttons as children
+    let modes = ["casual", "ranked", "custom"];
+    for (i, mode) in modes.iter().enumerate() {
+        let button_entity = commands.spawn((
             Button,
             Node {
-                width: Val::Px(180.0), // Smaller width
-                height: Val::Px(50.0), // Smaller height
-                margin: UiRect::all(Val::Px(15.0)),
+                width: Val::Px(100.0),
+                height: Val::Px(40.0),
+                margin: UiRect::all(Val::Px(5.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.57, 0.23, 1.0)), // Bright purple for connect button
-            ConnectButton,
-        )).with_children(|button_parent| {
-            button_parent.spawn((
-                Text::new("FIND MATCH"),
-                TextFont {
-                    font_size: 16.0, // Reasonable font size
-                    ..default()
-                },
-                TextColor(Color::srgb(1.0, 1.0, 1.0)), // Bright white text for connect button
-                ConnectButtonText,
+            BackgroundColor(if i == 0 { Color::srgb(0.4, 0.7, 0.4) } else { Color::srgb(0.3, 0.3, 0.3) }),
+            ModeButton(mode.to_string()),
+        )).with_children(|btn| {
+            btn.spawn((
+                Text::new(mode.to_uppercase()),
+                TextFont { font_size: 12.0, ..default() },
+                TextColor(Color::srgb(1.0, 1.0, 1.0)),
             ));
-        });
-        
-        // Instructions - responsive text
-        parent.spawn((
-            Text::new("Select a game mode and click 'FIND MATCH' to join a lobby with up to 4 players"),
-            TextFont {
-                font_size: 11.0, // Smaller text
-                ..default()
-            },
-            TextColor(Color::srgb(0.8, 0.8, 0.8)), // Bright gray for instructions
-            Node {
-                margin: UiRect::all(Val::Px(10.0)),
-                max_width: Val::Percent(85.0), // Prevent text overflow
-                justify_content: JustifyContent::Center, // Center the text container
-                ..default()
-            },
+        }).id();
+        commands.entity(mode_container).add_child(button_entity);
+    }
+    
+    // Room management buttons container
+    let button_container = commands.spawn((
+        Node {
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            margin: UiRect::all(Val::Px(20.0)),
+            ..default()
+        },
+        LobbyUIElements,
+    )).id();
+    
+    // Create room button
+    let create_btn = commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(180.0),
+            height: Val::Px(50.0),
+            margin: UiRect::all(Val::Px(10.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.2, 0.6, 0.2)),
+        CreateRoomButton,
+    )).with_children(|btn| {
+        btn.spawn((
+            Text::new("CREATE ROOM"),
+            TextFont { font_size: 16.0, ..default() },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
         ));
-    });
+    }).id();
+    
+    // Join room button
+    let join_btn = commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(180.0),
+            height: Val::Px(50.0),
+            margin: UiRect::all(Val::Px(10.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.2, 0.4, 0.6)),
+        JoinRoomButton,
+    )).with_children(|btn| {
+        btn.spawn((
+            Text::new("JOIN ROOM"),
+            TextFont { font_size: 16.0, ..default() },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        ));
+    }).id();
+    
+    // Local play button
+    let local_btn = commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(180.0),
+            height: Val::Px(50.0),
+            margin: UiRect::all(Val::Px(10.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.6, 0.4, 0.2)),
+        LocalPlayButton,
+    )).with_children(|btn| {
+        btn.spawn((
+            Text::new("LOCAL PLAY"),
+            TextFont { font_size: 16.0, ..default() },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        ));
+    }).id();
+    
+    // Add all buttons to container
+    commands.entity(button_container).add_child(create_btn);
+    commands.entity(button_container).add_child(join_btn);
+    commands.entity(button_container).add_child(local_btn);
+    
+    // Add all elements to main container
+    commands.entity(container_entity).add_child(title_entity);
+    commands.entity(container_entity).add_child(mode_container);
+    commands.entity(container_entity).add_child(button_container);
+}
+
+fn spawn_create_room_ui(commands: &mut Commands, container_entity: Entity, lobby_ui: &LobbyUI) {
+    let title = commands.spawn((
+        Text::new("Create Room"),
+        TextFont { font_size: 28.0, ..default() },
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Node { margin: UiRect::all(Val::Px(20.0)), ..default() },
+        LobbyUIElements,
+    )).id();
+    
+    let room_info = commands.spawn((
+        Text::new(format!("Room ID: {}", if lobby_ui.room_id.is_empty() { "Auto-generated" } else { &lobby_ui.room_id })),
+        TextFont { font_size: 16.0, ..default() },
+        TextColor(Color::srgb(0.8, 0.8, 0.8)),
+        Node { margin: UiRect::all(Val::Px(10.0)), ..default() },
+        LobbyUIElements,
+    )).id();
+    
+    let create_btn = commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(150.0),
+            height: Val::Px(50.0),
+            margin: UiRect::all(Val::Px(15.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.2, 0.6, 0.2)),
+        ConfirmCreateButton,
+        LobbyUIElements,
+    )).with_children(|btn| {
+        btn.spawn((
+            Text::new("CREATE"),
+            TextFont { font_size: 16.0, ..default() },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        ));
+    }).id();
+    
+    let back_btn = spawn_back_button_simple(commands);
+    
+    commands.entity(container_entity).add_child(title);
+    commands.entity(container_entity).add_child(room_info);
+    commands.entity(container_entity).add_child(create_btn);
+    commands.entity(container_entity).add_child(back_btn);
+}
+
+fn spawn_join_room_ui(commands: &mut Commands, container_entity: Entity, lobby_ui: &LobbyUI) {
+    let title = commands.spawn((
+        Text::new("Join Room"),
+        TextFont { font_size: 28.0, ..default() },
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Node { margin: UiRect::all(Val::Px(20.0)), ..default() },
+        LobbyUIElements,
+    )).id();
+    
+    let room_input = commands.spawn((
+        Text::new(format!("Enter Room ID: {}", lobby_ui.room_id)),
+        TextFont { font_size: 16.0, ..default() },
+        TextColor(Color::srgb(0.8, 0.8, 0.8)),
+        Node { margin: UiRect::all(Val::Px(10.0)), ..default() },
+        LobbyUIElements,
+    )).id();
+    
+    // Example room buttons
+    let example_container = commands.spawn((
+        Node {
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            margin: UiRect::all(Val::Px(10.0)),
+            ..default()
+        },
+        LobbyUIElements,
+    )).id();
+    
+    let example_rooms = ["ROOM001", "TEST123", "DEMO456"];
+    for room_id in example_rooms {
+        let room_btn = commands.spawn((
+            Button,
+            Node {
+                width: Val::Px(120.0),
+                height: Val::Px(35.0),
+                margin: UiRect::all(Val::Px(5.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+            RoomIdButton(room_id.to_string()),
+        )).with_children(|btn| {
+            btn.spawn((
+                Text::new(room_id),
+                TextFont { font_size: 12.0, ..default() },
+                TextColor(Color::srgb(1.0, 1.0, 1.0)),
+            ));
+        }).id();
+        commands.entity(example_container).add_child(room_btn);
+    }
+    
+    let join_btn = commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(150.0),
+            height: Val::Px(50.0),
+            margin: UiRect::all(Val::Px(15.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.2, 0.4, 0.6)),
+        ConfirmJoinButton,
+        LobbyUIElements,
+    )).with_children(|btn| {
+        btn.spawn((
+            Text::new("JOIN"),
+            TextFont { font_size: 16.0, ..default() },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        ));
+    }).id();
+    
+    let back_btn = spawn_back_button_simple(commands);
+    
+    commands.entity(container_entity).add_child(title);
+    commands.entity(container_entity).add_child(room_input);
+    commands.entity(container_entity).add_child(example_container);
+    commands.entity(container_entity).add_child(join_btn);
+    commands.entity(container_entity).add_child(back_btn);
+}
+
+fn spawn_in_room_ui(commands: &mut Commands, container_entity: Entity, lobby_ui: &LobbyUI) {
+    let title = commands.spawn((
+        Text::new(format!("Room: {}", lobby_ui.room_id)),
+        TextFont { font_size: 24.0, ..default() },
+        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        Node { margin: UiRect::all(Val::Px(20.0)), ..default() },
+        LobbyUIElements,
+    )).id();
+    
+    let player_count = commands.spawn((
+        Text::new(format!("Players: {}/4", lobby_ui.current_players)),
+        TextFont { font_size: 18.0, ..default() },
+        TextColor(Color::srgb(0.8, 0.8, 0.8)),
+        Node { margin: UiRect::all(Val::Px(10.0)), ..default() },
+        PlayerCountText,
+        LobbyUIElements,
+    )).id();
+    
+    commands.entity(container_entity).add_child(title);
+    commands.entity(container_entity).add_child(player_count);
+    
+    // Host indicator
+    if lobby_ui.is_host {
+        let host_indicator = commands.spawn((
+            Text::new("👑 You are the host"),
+            TextFont { font_size: 14.0, ..default() },
+            TextColor(Color::srgb(1.0, 0.8, 0.2)),
+            Node { margin: UiRect::all(Val::Px(10.0)), ..default() },
+            LobbyUIElements,
+        )).id();
+        commands.entity(container_entity).add_child(host_indicator);
+    }
+    
+    // Status
+    let status_text = if lobby_ui.is_searching {
+        "🔍 Searching for players..."
+    } else if lobby_ui.current_players >= 1 {
+        "✅ Ready to play!"
+    } else {
+        "⏳ Waiting for players..."
+    };
+    
+    let status = commands.spawn((
+        Text::new(status_text),
+        TextFont { font_size: 16.0, ..default() },
+        TextColor(Color::srgb(0.7, 0.9, 0.7)),
+        Node { margin: UiRect::all(Val::Px(15.0)), ..default() },
+        LobbyUIElements,
+    )).id();
+    commands.entity(container_entity).add_child(status);
+    
+    // Action buttons container
+    let button_container = commands.spawn((
+        Node {
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::Center,
+            margin: UiRect::all(Val::Px(20.0)),
+            ..default()
+        },
+        LobbyUIElements,
+    )).id();
+    
+    // Start game button
+    if lobby_ui.is_host || lobby_ui.current_players >= 1 {
+        let start_btn = commands.spawn((
+            Button,
+            Node {
+                width: Val::Px(120.0),
+                height: Val::Px(50.0),
+                margin: UiRect::all(Val::Px(10.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.2, 0.6, 0.2)),
+            StartGameButton,
+        )).with_children(|btn| {
+            btn.spawn((
+                Text::new("START GAME"),
+                TextFont { font_size: 14.0, ..default() },
+                TextColor(Color::srgb(1.0, 1.0, 1.0)),
+            ));
+        }).id();
+        commands.entity(button_container).add_child(start_btn);
+    }
+    
+    // Leave room button
+    let leave_btn = commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(120.0),
+            height: Val::Px(50.0),
+            margin: UiRect::all(Val::Px(10.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.6, 0.2, 0.2)),
+        LeaveRoomButton,
+    )).with_children(|btn| {
+        btn.spawn((
+            Text::new("LEAVE ROOM"),
+            TextFont { font_size: 14.0, ..default() },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        ));
+    }).id();
+    commands.entity(button_container).add_child(leave_btn);
+    
+    commands.entity(container_entity).add_child(button_container);
+}
+
+fn spawn_back_button_simple(commands: &mut Commands) -> Entity {
+    commands.spawn((
+        Button,
+        Node {
+            width: Val::Px(100.0),
+            height: Val::Px(40.0),
+            margin: UiRect::all(Val::Px(10.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.4, 0.4, 0.4)),
+        BackButton,
+        LobbyUIElements,
+    )).with_children(|btn| {
+        btn.spawn((
+            Text::new("BACK"),
+            TextFont { font_size: 14.0, ..default() },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+        ));
+    }).id()
 }
 
 // 🧹 Cleanup lobby UI when leaving lobby state
 fn cleanup_lobby_ui(
     mut commands: Commands,
-    lobby_query: Query<Entity, With<LobbyUI>>,
+    lobby_query: Query<Entity, With<LobbyContainer>>,
 ) {
     for entity in lobby_query.iter() {
         commands.entity(entity).despawn();
@@ -276,96 +566,158 @@ fn cleanup_lobby_ui(
 
 // 🎮 Handle lobby input and button clicks
 fn handle_lobby_input(
-    mut commands: Commands,
     mut interaction_query: Query<
-        (&Interaction, &mut BackgroundColor, Option<&ModeButton>, Option<&ConnectButton>),
+        (&Interaction, &mut BackgroundColor, Entity),
         (Changed<Interaction>, With<Button>)
     >,
+    button_types: Query<(
+        Option<&ModeButton>,
+        Option<&CreateRoomButton>, 
+        Option<&JoinRoomButton>,
+        Option<&LocalPlayButton>,
+        Option<&ConfirmCreateButton>,
+        Option<&ConfirmJoinButton>,
+        Option<&RoomIdButton>,
+        Option<&StartGameButton>,
+        Option<&LeaveRoomButton>,
+        Option<&BackButton>,
+    )>,
     mut lobby_events: EventWriter<LobbyEvent>,
     mut lobby_ui_query: Query<&mut LobbyUI>,
-    mut next_state: ResMut<NextState<AppState>>,
+    _next_state: ResMut<NextState<AppState>>,
 ) {
-    for (interaction, mut color, mode_button, connect_button) in interaction_query.iter_mut() {
-        match *interaction {
-            Interaction::Pressed => {
-                if let Some(mode_button) = mode_button {
-                    // Mode selection
-                    lobby_events.write(LobbyEvent::SelectMode(mode_button.0.clone()));
-                    *color = BackgroundColor(Color::srgb(0.3, 0.6, 0.3));
-                } else if connect_button.is_some() {
-                    // Connect button pressed
-                    info!("🔌 Starting matchmaking...");
-                    
-                    // Update lobby state to searching
-                    if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                        lobby_ui.is_searching = true;
+    for (interaction, mut color, entity) in interaction_query.iter_mut() {
+        if let Ok((mode_btn, create_btn, join_btn, local_btn, confirm_create, confirm_join, room_id_btn, start_btn, leave_btn, back_btn)) = button_types.get(entity) {
+            
+            match *interaction {
+                Interaction::Pressed => {
+                    if let Some(mode_button) = mode_btn {
+                        lobby_events.write(LobbyEvent::SelectMode(mode_button.0.clone()));
+                        *color = BackgroundColor(Color::srgb(0.4, 0.7, 0.4));
+                        
+                    } else if create_btn.is_some() {
+                        info!("🏠 Creating room...");
+                        lobby_events.write(LobbyEvent::CreateRoom);
+                        *color = BackgroundColor(Color::srgb(0.1, 0.5, 0.1));
+                        
+                    } else if join_btn.is_some() {
+                        info!("🚪 Joining room...");
+                        lobby_events.write(LobbyEvent::JoinRoom);
+                        *color = BackgroundColor(Color::srgb(0.1, 0.3, 0.5));
+                        
+                    } else if local_btn.is_some() {
+                        info!("🎮 Starting local game...");
+                        lobby_events.write(LobbyEvent::StartLocalGame);
+                        *color = BackgroundColor(Color::srgb(0.5, 0.3, 0.1));
+                        
+                    } else if confirm_create.is_some() {
+                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+                            // Generate room ID and enter room
+                            use std::collections::hash_map::DefaultHasher;
+                            use std::hash::{Hash, Hasher};
+                            let mut hasher = DefaultHasher::new();
+                            std::ptr::addr_of!(lobby_ui).hash(&mut hasher);
+                            let room_num = (hasher.finish() % 999) + 1;
+                            lobby_ui.room_id = format!("ROOM{:03}", room_num);
+                            lobby_ui.is_host = true;
+                            lobby_ui.lobby_mode = LobbyMode::InRoom;
+                            info!("🏠 Created room: {}", lobby_ui.room_id);
+                        }
+                        *color = BackgroundColor(Color::srgb(0.1, 0.5, 0.1));
+                        
+                    } else if confirm_join.is_some() {
+                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+                            if !lobby_ui.room_id.is_empty() {
+                                lobby_ui.is_host = false;
+                                lobby_ui.lobby_mode = LobbyMode::InRoom;
+                                info!("🚪 Joined room: {}", lobby_ui.room_id);
+                            }
+                        }
+                        *color = BackgroundColor(Color::srgb(0.1, 0.3, 0.5));
+                        
+                    } else if let Some(room_id_btn) = room_id_btn {
+                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+                            lobby_ui.room_id = room_id_btn.0.clone();
+                            info!("🔤 Selected room ID: {}", lobby_ui.room_id);
+                        }
+                        *color = BackgroundColor(Color::srgb(0.2, 0.2, 0.2));
+                        
+                    } else if start_btn.is_some() {
+                        info!("🚀 Starting multiplayer game!");
+                        lobby_events.write(LobbyEvent::StartGame);
+                        *color = BackgroundColor(Color::srgb(0.1, 0.5, 0.1));
+                        
+                    } else if leave_btn.is_some() {
+                        info!("👋 Leaving room...");
+                        lobby_events.write(LobbyEvent::LeaveRoom);
+                        *color = BackgroundColor(Color::srgb(0.5, 0.1, 0.1));
+                        
+                    } else if back_btn.is_some() {
+                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+                            lobby_ui.lobby_mode = LobbyMode::Main;
+                        }
+                        *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
                     }
-                    
-                    // Connect to matchmaker using BevyGap (if available)
-                    #[cfg(feature = "bevygap")]
-                    {
-                        commands.bevygap_connect_client();
-                        info!("Initiated bevygap connection - waiting for match...");
-                    }
-                    #[cfg(not(feature = "bevygap"))]
-                    {
-                        warn!("bevygap feature not enabled - transitioning to game immediately for testing");
-                        next_state.set(AppState::InGame);
-                    }
-                }
-            },
-            Interaction::Hovered => {
-                if mode_button.is_some() {
-                    *color = BackgroundColor(Color::srgb(0.45, 0.15, 0.55)); // Purple hover for mode buttons
-                } else if connect_button.is_some() {
-                    *color = BackgroundColor(Color::srgb(0.7, 0.3, 1.0)); // Lighter purple hover for connect button
-                }
-            },
-            Interaction::None => {
-                if let Some(mode_button) = mode_button {
-                    let lobby_ui = if let Ok(ui) = lobby_ui_query.single() {
-                        ui
+                },
+                
+                Interaction::Hovered => {
+                    // Lighter colors on hover
+                    if mode_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.5, 0.8, 0.5));
+                    } else if create_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.3, 0.7, 0.3));
+                    } else if join_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.3, 0.5, 0.7));
+                    } else if local_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.7, 0.5, 0.3));
                     } else {
-                        return;
-                    };
-                    if mode_button.0 == lobby_ui.selected_mode {
-                        *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for selected
-                    } else {
-                        *color = BackgroundColor(Color::srgb(0.27, 0.0, 0.33)); // Dark purple for unselected
+                        *color = BackgroundColor(Color::srgb(0.5, 0.5, 0.5));
                     }
-                } else if connect_button.is_some() {
-                    *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for connect button
+                },
+                
+                Interaction::None => {
+                    // Reset to normal colors
+                    if let Some(mode_button) = mode_btn {
+                        if let Ok(lobby_ui) = lobby_ui_query.single() {
+                            if mode_button.0 == lobby_ui.selected_mode {
+                                *color = BackgroundColor(Color::srgb(0.4, 0.7, 0.4));
+                            } else {
+                                *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
+                            }
+                        }
+                    } else if create_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.2, 0.6, 0.2));
+                    } else if join_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.2, 0.4, 0.6));
+                    } else if local_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.6, 0.4, 0.2));
+                    } else if confirm_create.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.2, 0.6, 0.2));
+                    } else if confirm_join.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.2, 0.4, 0.6));
+                    } else if room_id_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
+                    } else if start_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.2, 0.6, 0.2));
+                    } else if leave_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.6, 0.2, 0.2));
+                    } else if back_btn.is_some() {
+                        *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.4));
+                    }
                 }
             }
         }
     }
 }
 
-// 📊 Update lobby UI with current state
-fn update_lobby_ui(
-    lobby_config: Res<LobbyConfig>,
+// Simple lobby UI update (just update player count in room)
+fn update_simple_ui(
     lobby_ui_query: Query<&LobbyUI>,
     mut player_count_query: Query<&mut Text, With<PlayerCountText>>,
-    mut connect_button_query: Query<(&mut Text, &mut BackgroundColor), (With<ConnectButtonText>, Without<PlayerCountText>)>,
 ) {
-    if let Ok(lobby_ui) = lobby_ui_query.single() {
-        // Update player count text
-        if let Ok(mut text) = player_count_query.single_mut() {
-            **text = format!("Players: {}/{}", lobby_ui.current_players, lobby_config.max_players);
-        }
-        
-        // Update connect button based on state
-        if let Ok((mut text, mut color)) = connect_button_query.single_mut() {
-            if lobby_ui.is_searching {
-                **text = "SEARCHING...".to_string();
-                *color = BackgroundColor(Color::srgb(0.8, 0.4, 0.2)); // Orange for searching state
-            } else if lobby_ui.current_players >= lobby_config.max_players {
-                **text = "LOBBY FULL".to_string();
-                *color = BackgroundColor(Color::srgb(0.7, 0.2, 0.2)); // Red for full state
-            } else {
-                **text = "FIND MATCH".to_string();
-                *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for normal state
-            }
+    if let (Ok(lobby_ui), Ok(mut text)) = (lobby_ui_query.single(), player_count_query.single_mut()) {
+        if lobby_ui.lobby_mode == LobbyMode::InRoom {
+            **text = format!("Players: {}/4", lobby_ui.current_players);
         }
     }
 }
@@ -374,7 +726,7 @@ fn update_lobby_ui(
 fn handle_lobby_events(
     mut lobby_events: EventReader<LobbyEvent>,
     mut lobby_ui_query: Query<&mut LobbyUI>,
-    mut mode_button_query: Query<(&mut BackgroundColor, &ModeButton), With<Button>>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
     let mut lobby_ui = if let Ok(ui) = lobby_ui_query.single_mut() {
         ui
@@ -393,22 +745,38 @@ fn handle_lobby_events(
                 info!("👋 Player left! Current players: {}", lobby_ui.current_players);
             },
             LobbyEvent::StartGame => {
-                info!("🚀 Starting game with {} players!", lobby_ui.current_players);
+                info!("🚀 Starting multiplayer game with {} players!", lobby_ui.current_players);
                 lobby_ui.is_searching = false;
+                next_state.set(AppState::InGame);
+            },
+            LobbyEvent::StartLocalGame => {
+                info!("🎮 Starting local game!");
+                next_state.set(AppState::InGame);
             },
             LobbyEvent::SelectMode(mode) => {
                 lobby_ui.selected_mode = mode.clone();
                 info!("🎯 Selected game mode: {}", mode);
-                
-                // Update button colors
-                for (mut color, mode_button) in mode_button_query.iter_mut() {
-                    if mode_button.0 == *mode {
-                        *color = BackgroundColor(Color::srgb(0.57, 0.23, 1.0)); // Bright purple for selected
-                    } else {
-                        *color = BackgroundColor(Color::srgb(0.27, 0.0, 0.33)); // Dark purple for unselected
-                    }
-                }
-            }
+            },
+            LobbyEvent::CreateRoom => {
+                lobby_ui.lobby_mode = LobbyMode::CreateRoom;
+                info!("🏠 Switching to create room mode");
+            },
+            LobbyEvent::JoinRoom => {
+                lobby_ui.lobby_mode = LobbyMode::JoinRoom;
+                info!("🚪 Switching to join room mode");
+            },
+            LobbyEvent::EnterRoomId(room_id) => {
+                lobby_ui.room_id = room_id.clone();
+                info!("🔤 Entered room ID: {}", room_id);
+            },
+            LobbyEvent::LeaveRoom => {
+                lobby_ui.lobby_mode = LobbyMode::Main;
+                lobby_ui.room_id.clear();
+                lobby_ui.is_host = false;
+                lobby_ui.current_players = 1;
+                lobby_ui.is_searching = false;
+                info!("👋 Left room, returning to main lobby");
+            },
         }
     }
 }
@@ -471,10 +839,37 @@ fn get_matchmaker_url() -> String {
 struct PlayerCountText;
 
 #[derive(Component)]
-struct ConnectButton;
+struct LobbyContainer;
 
 #[derive(Component)]
-struct ConnectButtonText;
+struct LobbyUIElements;
 
 #[derive(Component)]
 struct ModeButton(String);
+
+#[derive(Component)]
+struct CreateRoomButton;
+
+#[derive(Component)]
+struct JoinRoomButton;
+
+#[derive(Component)]
+struct LocalPlayButton;
+
+#[derive(Component)]
+struct ConfirmCreateButton;
+
+#[derive(Component)]
+struct ConfirmJoinButton;
+
+#[derive(Component)]
+struct RoomIdButton(String);
+
+#[derive(Component)]
+struct StartGameButton;
+
+#[derive(Component)]
+struct LeaveRoomButton;
+
+#[derive(Component)]
+struct BackButton;
