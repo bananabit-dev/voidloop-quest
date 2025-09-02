@@ -103,7 +103,7 @@ RUN cat > /app/www/index.html << 'EOF'
 </head>
 <body>
     <div id="loading">Loading...</div>
-    <canvas id="canvas"></canvas>
+    <canvas id="game"></canvas>
     <script type="module">
         import init from './voidloop-quest.js';
         
