@@ -12,7 +12,7 @@ export RUSTFLAGS="--cfg getrandom_backend=\"wasm_js\""
 
 # Build the WASM binary
 echo "📦 Building WASM binary..."
-cargo build --release --target wasm32-unknown-unknown --package voidloop-quest-client
+cargo build --release --target wasm32-unknown-unknown --package voidloop-quest-client --no-default-features
 
 # Generate WASM bindings
 echo "🔗 Generating WASM bindings..."

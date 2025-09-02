@@ -1,4 +1,6 @@
 use bevy::prelude::*;
+
+#[cfg(feature = "bevygap")]
 use bevygap_client_plugin::BevygapClientPlugin;
 
 #[cfg(feature = "bevygap")]
