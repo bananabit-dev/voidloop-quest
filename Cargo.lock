@@ -9596,10 +9596,12 @@ dependencies = [
  "avian2d",
  "bevy 0.16.1",
  "bevygap_client_plugin",
+ "edgegap_async",
  "leafwing-input-manager",
  "lightyear",
  "serde",
  "shared",
+ "tokio",
  "web-sys",
 ]
 

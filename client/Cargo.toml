@@ -7,7 +7,7 @@ publish.workspace = true
 
 [features]
 default = ["bevygap"]
-bevygap = ["dep:bevygap_client_plugin"]
+bevygap = ["dep:bevygap_client_plugin", "dep:edgegap_async", "dep:tokio"]
 matchmaker-tls = ["bevygap_client_plugin/matchmaker-tls"]
 
 [dependencies]
@@ -28,6 +28,8 @@ avian2d.workspace = true
 serde.workspace = true
 leafwing-input-manager = {workspace = true, features = ["ui", "asset"]}
 bevygap_client_plugin = {workspace = true, optional = true}
+edgegap_async = { git = "https://github.com/bananabit-dev/bevygap.git", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
 
 # on wasm, we need web-sys too:
 [target."cfg(target_family = \"wasm\")".dependencies]
