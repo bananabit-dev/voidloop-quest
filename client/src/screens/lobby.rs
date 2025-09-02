@@ -1,4 +1,6 @@
 use bevy::prelude::*;
+
+#[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::BevygapConnectExt;
 
 // 🎮 Client-side lobby configuration
@@ -87,7 +89,7 @@ impl Plugin for LobbyPlugin {
 fn setup_lobby_ui(mut commands: Commands) {
     info!("🏠 Setting up lobby UI");
     
-    // Spawn lobby UI
+    // Spawn lobby UI with responsive container
     commands.spawn((
         LobbyUI::new(),
         Node {
@@ -96,44 +98,50 @@ fn setup_lobby_ui(mut commands: Commands) {
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
+            padding: UiRect::all(Val::Percent(2.0)), // Use percentage instead of Vw
             ..default()
         },
-        BackgroundColor(Color::srgb(0.1, 0.1, 0.1)),
+        BackgroundColor(Color::srgb(0.15, 0.15, 0.15)), // Slightly lighter for better contrast
     )).with_children(|parent| {
-        // Title
+        // Title - responsive font size
         parent.spawn((
             Text::new("🎮 Voidloop Quest Lobby"),
             TextFont {
-                font_size: 48.0,
+                font_size: 28.0, // Smaller font for better tablet support
                 ..default()
             },
-            TextColor(Color::WHITE),
+            TextColor(Color::WHITE), // Back to white
             Node {
-                margin: UiRect::all(Val::Px(20.0)),
+                margin: UiRect::all(Val::Px(15.0)), // Reasonable pixel margin
+                max_width: Val::Percent(90.0), // Prevent overflow
                 ..default()
             },
         ));
         
-        // Player count
+        // Player count - responsive sizing
         parent.spawn((
             Text::new("Players: 1/4"),
             TextFont {
-                font_size: 24.0,
+                font_size: 16.0, // Smaller font
                 ..default()
             },
             TextColor(Color::srgb(0.8, 0.8, 0.8)),
             Node {
-                margin: UiRect::all(Val::Px(10.0)),
+                margin: UiRect::all(Val::Px(8.0)), // Smaller margin
                 ..default()
             },
             PlayerCountText,
         ));
         
-        // Game mode selection
+        // Game mode selection - responsive layout
         parent.spawn((
             Node {
                 flex_direction: FlexDirection::Row,
-                margin: UiRect::all(Val::Px(20.0)),
+                flex_wrap: FlexWrap::Wrap, // Allow wrapping on small screens
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                margin: UiRect::all(Val::Px(12.0)),
+                max_width: Val::Percent(90.0), // Prevent overflow
                 ..default()
             },
         )).with_children(|mode_parent| {
@@ -142,9 +150,9 @@ fn setup_lobby_ui(mut commands: Commands) {
                 mode_parent.spawn((
                     Button,
                     Node {
-                        width: Val::Px(120.0),
-                        height: Val::Px(40.0),
-                        margin: UiRect::all(Val::Px(5.0)),
+                        width: Val::Px(100.0), // Fixed but smaller width
+                        height: Val::Px(40.0), // Fixed but smaller height
+                        margin: UiRect::all(Val::Px(4.0)), // Smaller margin
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -155,7 +163,7 @@ fn setup_lobby_ui(mut commands: Commands) {
                     button_parent.spawn((
                         Text::new(mode.to_uppercase()),
                         TextFont {
-                            font_size: 16.0,
+                            font_size: 12.0, // Smaller font
                             ..default()
                         },
                         TextColor(Color::WHITE),
@@ -164,13 +172,13 @@ fn setup_lobby_ui(mut commands: Commands) {
             }
         });
         
-        // Connect button
+        // Connect button - responsive sizing
         parent.spawn((
             Button,
             Node {
-                width: Val::Px(200.0),
-                height: Val::Px(60.0),
-                margin: UiRect::all(Val::Px(20.0)),
+                width: Val::Px(180.0), // Smaller width
+                height: Val::Px(50.0), // Smaller height
+                margin: UiRect::all(Val::Px(15.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -181,7 +189,7 @@ fn setup_lobby_ui(mut commands: Commands) {
             button_parent.spawn((
                 Text::new("FIND MATCH"),
                 TextFont {
-                    font_size: 20.0,
+                    font_size: 16.0, // Reasonable font size
                     ..default()
                 },
                 TextColor(Color::WHITE),
@@ -189,16 +197,18 @@ fn setup_lobby_ui(mut commands: Commands) {
             ));
         });
         
-        // Instructions
+        // Instructions - responsive text
         parent.spawn((
             Text::new("Select a game mode and click 'FIND MATCH' to join a lobby with up to 4 players"),
             TextFont {
-                font_size: 16.0,
+                font_size: 11.0, // Smaller text
                 ..default()
             },
             TextColor(Color::srgb(0.6, 0.6, 0.6)),
             Node {
-                margin: UiRect::all(Val::Px(20.0)),
+                margin: UiRect::all(Val::Px(10.0)),
+                max_width: Val::Percent(85.0), // Prevent text overflow
+                justify_content: JustifyContent::Center, // Center the text container
                 ..default()
             },
         ));
@@ -237,7 +247,8 @@ fn handle_lobby_input(
                     // Connect button pressed
                     info!("🔌 Starting matchmaking...");
                     
-                    // Connect to matchmaker using BevyGap
+                    // Connect to matchmaker using BevyGap (if available)
+                    #[cfg(feature = "bevygap")]
                     commands.bevygap_connect_client();
                     
                     // Transition to game state

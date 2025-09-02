@@ -1,5 +1,8 @@
 use bevy::prelude::*;
+
+#[cfg(feature = "bevygap")]
 use bevygap_client_plugin::{BevygapClientPlugin, prelude::BevygapConnectExt};
+
 use leafwing_input_manager::prelude::*;
 
 use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
@@ -30,7 +33,8 @@ impl Plugin for ClientPlugin {
         // Input plugin
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
         
-        // Networking plugins
+        // Networking plugins (only if bevygap feature is enabled)
+        #[cfg(feature = "bevygap")]
         app.add_plugins(BevygapClientPlugin);
         
         // Lobby system - handles 4-player lobby UI and matchmaking
