@@ -1,0 +1,12 @@
+# WASM MIME type configuration
+AddType application/wasm .wasm
+
+# Enable gzip compression for WASM files
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/wasm
+</IfModule>
+
+# Cache control for WASM files
+<IfModule mod_expires.c>
+    ExpiresByType application/wasm "access plus 1 month"
+</IfModule>

@@ -43,8 +43,11 @@ impl Plugin for ClientPlugin {
         // Shared game logic
         app.add_plugins(SharedPlugin);
         
+        // Camera setup - needed for both Lobby UI and InGame
+        app.add_systems(Startup, setup_camera);
+        
         // Game setup systems (only run when in game)
-        app.add_systems(OnEnter(AppState::InGame), setup_camera);
+        app.add_systems(OnEnter(AppState::InGame), setup_game);
         app.add_systems(Update, (
             spawn_player_visual,
             spawn_platform_visual,
@@ -86,7 +89,7 @@ fn get_matchmaker_url() -> String {
 }
 
 fn setup_camera(mut commands: Commands) {
-    // Spawn 2D camera with UI support
+    // Spawn 2D camera with UI support - needed for both lobby UI and game
     commands.spawn((
         Camera2d::default(),
         Camera {
@@ -94,8 +97,10 @@ fn setup_camera(mut commands: Commands) {
             ..default()
         },
     ));
-    
-    // Spawn some platforms for the level
+}
+
+fn setup_game(mut commands: Commands) {
+    // Spawn some platforms for the level (only when entering game)
     spawn_platforms(&mut commands);
 }
 
