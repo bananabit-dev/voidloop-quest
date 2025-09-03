@@ -21,7 +21,7 @@ impl Plugin for ServerPlugin {
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
         
         // Add mouse button input resource that the input manager expects
-        app.init_resource::<bevy::input::ButtonInput<bevy::input::mouse::MouseButton>>>();
+        app.init_resource::<bevy::input::ButtonInput<bevy::input::mouse::MouseButton>>();
         
         // Networking
         #[cfg(feature = "bevygap")]
