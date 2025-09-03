@@ -6,43 +6,42 @@ use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
 use std::collections::HashMap;
 
-use shared::{Player, PlayerActions, Platform, SharedPlugin, RoomInfo};
+use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 
 pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
         // Minimal Bevy plugins for server
-        app.add_plugins(MinimalPlugins.set(bevy::app::ScheduleRunnerPlugin::run_loop(
-            std::time::Duration::from_secs_f32(1.0 / 60.0), // 60 FPS server tick rate
-        )));
-        
+        app.add_plugins(
+            MinimalPlugins.set(bevy::app::ScheduleRunnerPlugin::run_loop(
+                std::time::Duration::from_secs_f32(1.0 / 60.0), // 60 FPS server tick rate
+            )),
+        );
+
         // Add input plugin for shared systems that need it
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
-        
+
         // Add mouse button input resource that the input manager expects
         app.init_resource::<bevy::input::ButtonInput<bevy::input::mouse::MouseButton>>();
-        
+
         // Networking
         #[cfg(feature = "bevygap")]
         app.add_plugins(BevygapServerPlugin);
-        
+
         // Shared game logic
         app.add_plugins(SharedPlugin);
-        
+
         // Room management
         app.insert_resource(RoomRegistry::new());
         app.insert_resource(MatchmakingQueue::new());
-        
+
         // Server-specific systems
         app.add_systems(Startup, setup_world);
-        
-        // Player management system - handles spawning/despawning players  
-        app.add_systems(Update, (
-            handle_player_management,
-            manage_room_lifecycle,
-        ));
-        
+
+        // Player management system - handles spawning/despawning players
+        app.add_systems(Update, (handle_player_management, manage_room_lifecycle));
+
         // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
         // Example: Game rules, scoring, AI, matchmaking logic, etc.
         // app.add_systems(Update, your_custom_server_system);
@@ -52,7 +51,7 @@ impl Plugin for ServerPlugin {
 
 fn setup_world(mut commands: Commands) {
     info!("Setting up game world...");
-    
+
     // Spawn platforms (these will be replicated to clients in networked mode)
     let platform_positions = vec![
         Vec3::new(-200.0, -100.0, 0.0),
@@ -61,7 +60,7 @@ fn setup_world(mut commands: Commands) {
         Vec3::new(-300.0, 50.0, 0.0),
         Vec3::new(300.0, 100.0, 0.0),
     ];
-    
+
     for pos in platform_positions {
         #[cfg(feature = "bevygap")]
         {
@@ -73,13 +72,10 @@ fn setup_world(mut commands: Commands) {
         }
         #[cfg(not(feature = "bevygap"))]
         {
-            commands.spawn((
-                Platform,
-                Transform::from_translation(pos),
-            ));
+            commands.spawn((Platform, Transform::from_translation(pos)));
         }
     }
-    
+
     info!("World setup complete with {} platforms", 5);
 }
 
@@ -106,30 +102,36 @@ fn manage_room_lifecycle(
     time: Res<Time>,
 ) {
     let current_player_count = players.iter().count() as u32;
-    
+
     // Update player count for all rooms
     let mut rooms_to_remove = Vec::new();
     let room_ids: Vec<String> = room_registry.rooms.keys().cloned().collect();
-    
+
     for room_id in room_ids {
         if let Some(room) = room_registry.rooms.get_mut(&room_id) {
             let old_count = room.current_players;
             room.current_players = current_player_count;
-            
+
             if room.current_players > old_count {
-                info!("Player joined room '{}'. Players: {}/{}", 
-                      room.room_id, room.current_players, room.max_players);
+                info!(
+                    "Player joined room '{}'. Players: {}/{}",
+                    room.room_id, room.current_players, room.max_players
+                );
             } else if room.current_players < old_count {
-                info!("Player left room '{}'. Players: {}/{}", 
-                      room.room_id, room.current_players, room.max_players);
+                info!(
+                    "Player left room '{}'. Players: {}/{}",
+                    room.room_id, room.current_players, room.max_players
+                );
             }
-            
+
             // Check if game should start
             if room.current_players >= 1 && old_count < 1 {
-                info!("🚀 Room '{}' has minimum players ({}) - game can start!", 
-                      room.room_id, 1);
+                info!(
+                    "🚀 Room '{}' has minimum players ({}) - game can start!",
+                    room.room_id, 1
+                );
             }
-            
+
             // Auto-cleanup empty rooms after 30 seconds
             if room.current_players == 0 {
                 if room.created_time.is_none() {
@@ -137,8 +139,12 @@ fn manage_room_lifecycle(
                     info!("Room '{}' is now empty - starting cleanup timer", room_id);
                 } else if let Some(empty_since) = room.created_time {
                     let empty_duration = time.elapsed_secs_f64() - empty_since;
-                    if empty_duration > 30.0 { // 30 seconds cleanup time
-                        info!("Room '{}' has been empty for {:.1}s - cleaning up", room_id, empty_duration);
+                    if empty_duration > 30.0 {
+                        // 30 seconds cleanup time
+                        info!(
+                            "Room '{}' has been empty for {:.1}s - cleaning up",
+                            room_id, empty_duration
+                        );
                         rooms_to_remove.push(room_id.clone());
                     }
                 }
@@ -148,7 +154,7 @@ fn manage_room_lifecycle(
             }
         }
     }
-    
+
     // Remove empty rooms
     for room_id in rooms_to_remove {
         room_registry.rooms.remove(&room_id);
@@ -190,8 +196,13 @@ impl RoomRegistry {
             rooms: HashMap::new(),
         }
     }
-    
-    pub fn create_room(&mut self, room_id: String, host_name: String, game_mode: String) -> RoomData {
+
+    pub fn create_room(
+        &mut self,
+        room_id: String,
+        host_name: String,
+        game_mode: String,
+    ) -> RoomData {
         let room_data = RoomData {
             room_id: room_id.clone(),
             host_name,
@@ -204,15 +215,18 @@ impl RoomRegistry {
         self.rooms.insert(room_id.clone(), room_data.clone());
         room_data
     }
-    
+
     pub fn get_room_list(&self) -> Vec<RoomInfo> {
-        self.rooms.values().map(|room| RoomInfo {
-            room_id: room.room_id.clone(),
-            current_players: room.current_players,
-            max_players: room.max_players,
-            host_name: room.host_name.clone(),
-            game_mode: room.game_mode.clone(),
-        }).collect()
+        self.rooms
+            .values()
+            .map(|room| RoomInfo {
+                room_id: room.room_id.clone(),
+                current_players: room.current_players,
+                max_players: room.max_players,
+                host_name: room.host_name.clone(),
+                game_mode: room.game_mode.clone(),
+            })
+            .collect()
     }
 }
 
@@ -222,12 +236,15 @@ impl MatchmakingQueue {
             queue: HashMap::new(),
         }
     }
-    
+
     pub fn add_player(&mut self, game_mode: String, player_id: String, join_time: f64) {
         let queue = self.queue.entry(game_mode).or_insert_with(Vec::new);
-        queue.push(MatchmakingPlayer { player_id, join_time });
+        queue.push(MatchmakingPlayer {
+            player_id,
+            join_time,
+        });
     }
-    
+
     pub fn try_create_match(&mut self, game_mode: &str) -> Option<Vec<MatchmakingPlayer>> {
         if let Some(queue) = self.queue.get_mut(game_mode) {
             if queue.len() >= 4 {

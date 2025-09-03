@@ -10,7 +10,7 @@ struct Args {
     /// Port to listen on
     #[arg(short, long, default_value_t = 5001)]
     port: u16,
-    
+
     /// Transport type (websocket or webtransport)
     #[arg(short, long, default_value = "websocket")]
     transport: String,
@@ -18,10 +18,10 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-        // Display the logo at startup
+    // Display the logo at startup
 
-
-    println!(r#"
+    println!(
+        r#"
 
 
     ╔══════════════════════════════════════════════════════════════╗
@@ -49,11 +49,10 @@ fn main() {
     ║                                                              ║
     ║                  🚀 Server Starting... 🚀                    ║
     ╚══════════════════════════════════════════════════════════════╝
-    "#);
+    "#
+    );
     info!("🎮 Simple Platformer Server starting...");
     info!("📡 Listening on port {}", args.port);
-    
-    App::new()
-        .add_plugins(ServerPlugin)
-        .run();
+
+    App::new().add_plugins(ServerPlugin).run();
 }
