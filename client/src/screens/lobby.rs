@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use rand::Rng;
 
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::BevygapConnectExt;
@@ -197,9 +198,11 @@ fn update_lobby_display(
     existing_ui: Query<Entity, (With<LobbyUIElements>, Without<LobbyContainer>)>,
 ) {
     if let Ok((lobby_ui, container_entity)) = lobby_ui_query.single() {
-        // Clear existing UI elements
+        // Clear existing UI elements safely
         for entity in existing_ui.iter() {
-            commands.entity(entity).despawn();
+            if let Ok(mut entity_commands) = commands.get_entity(entity) {
+                entity_commands.despawn();
+            }
         }
 
         // Rebuild UI based on current mode
@@ -824,7 +827,9 @@ fn spawn_back_button_simple(commands: &mut Commands) -> Entity {
 // 🧹 Cleanup lobby UI when leaving lobby state
 fn cleanup_lobby_ui(mut commands: Commands, lobby_query: Query<Entity, With<LobbyContainer>>) {
     for entity in lobby_query.iter() {
-        commands.entity(entity).despawn();
+        if let Ok(mut entity_commands) = commands.get_entity(entity) {
+            entity_commands.despawn();
+        }
     }
 }
 
@@ -1044,13 +1049,9 @@ fn handle_lobby_events(
                 info!("🏠 Switching to create room mode");
             }
             LobbyEvent::ConfirmCreateRoom => {
-                // Generate room ID using current time for uniqueness
-                use std::time::{SystemTime, UNIX_EPOCH};
-                let timestamp = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let room_num = (timestamp % 999) + 1;
+                // Generate room ID using random numbers for uniqueness (WASM-compatible)
+                let mut rng = rand::thread_rng();
+                let room_num = rng.gen_range(1..=999);
                 let room_id = format!("ROOM{:03}", room_num);
 
                 // Create room info and add to registry
@@ -1246,14 +1247,13 @@ fn handle_matchmaking_events(
                 let base_url = lobby_config.edgegap_api_url.clone();
                 let selected_mode = lobby_ui.selected_mode.clone();
 
-                // Generate unique lobby name
+                // Generate unique lobby name using random ID (WASM-compatible)
+                let mut rng = rand::thread_rng();
+                let random_id = rng.gen_range(10000..99999);
                 let lobby_name = format!(
                     "voidloop-{}-{}",
                     selected_mode,
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs()
+                    random_id
                 );
 
                 info!("🔧 Creating Edgegap lobby: {}", lobby_name);
