@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use lightyear::prelude::*;
 
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::BevygapConnectExt;
@@ -10,9 +9,8 @@ use edgegap_async::{apis::{configuration::Configuration, lobbies_api}, models::{
 #[cfg(feature = "bevygap")]
 use tokio::runtime::Runtime;
 
-use shared::{RoomMessage, RoomInfo, Channel1};
+use shared::{RoomInfo};
 
-// Connection state tracking resource
 #[derive(Resource, Default)]
 pub struct ConnectionState {
     pub search_start_time: Option<f64>,
@@ -151,7 +149,7 @@ impl Plugin for LobbyPlugin {
                     update_simple_ui,
                     handle_lobby_events,
                     handle_connection_events,
-                    handle_room_messages,
+                    simulate_quick_match,
                     #[cfg(feature = "bevygap")]
                     handle_matchmaking_events,
                 ).run_if(in_state(AppState::Lobby))
@@ -671,7 +669,6 @@ fn handle_lobby_input(
     )>,
     mut lobby_events: EventWriter<LobbyEvent>,
     mut lobby_ui_query: Query<&mut LobbyUI>,
-    mut client: ResMut<Client>,
 ) {
     for (interaction, mut color, entity) in interaction_query.iter_mut() {
         if let Ok((mode_btn, quick_match_btn, create_btn, join_btn, local_btn, confirm_create, confirm_join, room_id_btn, start_btn, leave_btn, back_btn)) = button_types.get(entity) {
@@ -684,12 +681,10 @@ fn handle_lobby_input(
                         
                     } else if quick_match_btn.is_some() {
                         info!("🎯 Starting quick match...");
-                        if let Ok(lobby_ui) = lobby_ui_query.single() {
-                            let _ = client.send_message::<RoomMessage, Channel1>(
-                                RoomMessage::StartMatchmaking { 
-                                    game_mode: lobby_ui.selected_mode.clone() 
-                                }
-                            );
+                        // For now, simulate finding a match quickly
+                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+                            lobby_ui.is_searching = true;
+                            // TODO: Add real matchmaking integration
                         }
                         lobby_events.write(LobbyEvent::StartMatchmaking);
                         *color = BackgroundColor(Color::srgb(0.5, 0.1, 0.5));
@@ -701,8 +696,32 @@ fn handle_lobby_input(
                         
                     } else if join_btn.is_some() {
                         info!("🚪 Joining room...");
-                        // Request room list from server
-                        let _ = client.send_message::<RoomMessage, Channel1>(RoomMessage::ListRooms);
+                        // For now, populate with dummy rooms
+                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+                            lobby_ui.available_rooms = vec![
+                                RoomInfo {
+                                    room_id: "ROOM001".to_string(),
+                                    current_players: 2,
+                                    max_players: 4,
+                                    host_name: "Player123".to_string(),
+                                    game_mode: "casual".to_string(),
+                                },
+                                RoomInfo {
+                                    room_id: "ROOM002".to_string(),
+                                    current_players: 1,
+                                    max_players: 4,
+                                    host_name: "GamerPro".to_string(),
+                                    game_mode: "ranked".to_string(),
+                                },
+                                RoomInfo {
+                                    room_id: "ROOM003".to_string(),
+                                    current_players: 3,
+                                    max_players: 4,
+                                    host_name: "QuickPlayer".to_string(),
+                                    game_mode: "custom".to_string(),
+                                },
+                            ];
+                        }
                         lobby_events.write(LobbyEvent::JoinRoom);
                         *color = BackgroundColor(Color::srgb(0.1, 0.3, 0.5));
                         
@@ -713,7 +732,7 @@ fn handle_lobby_input(
                         
                     } else if confirm_create.is_some() {
                         if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                            // Generate room ID and create room on server
+                            // Generate room ID and create room locally for now
                             use std::collections::hash_map::DefaultHasher;
                             use std::hash::{Hash, Hasher};
                             let mut hasher = DefaultHasher::new();
@@ -721,36 +740,21 @@ fn handle_lobby_input(
                             let room_num = (hasher.finish() % 999) + 1;
                             let room_id = format!("ROOM{:03}", room_num);
                             
-                            // Send create room message to server
-                            let _ = client.send_message::<RoomMessage, Channel1>(
-                                RoomMessage::CreateRoom { 
-                                    room_id: room_id.clone(),
-                                    host_name: lobby_ui.player_name.clone(),
-                                    game_mode: lobby_ui.selected_mode.clone(),
-                                }
-                            );
-                            
                             lobby_ui.room_id = room_id;
                             lobby_ui.is_host = true;
-                            lobby_ui.is_searching = true; // Show loading state
-                            info!("🏠 Creating room: {}", lobby_ui.room_id);
+                            lobby_ui.lobby_mode = LobbyMode::InRoom;
+                            lobby_ui.is_searching = false;
+                            info!("🏠 Created room: {}", lobby_ui.room_id);
                         }
                         *color = BackgroundColor(Color::srgb(0.1, 0.5, 0.1));
                         
                     } else if confirm_join.is_some() {
                         if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
                             if !lobby_ui.room_id.is_empty() {
-                                // Send join room message to server
-                                let _ = client.send_message::<RoomMessage, Channel1>(
-                                    RoomMessage::JoinRoom { 
-                                        room_id: lobby_ui.room_id.clone(),
-                                        player_name: lobby_ui.player_name.clone(),
-                                    }
-                                );
-                                
                                 lobby_ui.is_host = false;
-                                lobby_ui.is_searching = true; // Show loading state
-                                info!("🚪 Joining room: {}", lobby_ui.room_id);
+                                lobby_ui.lobby_mode = LobbyMode::InRoom;
+                                lobby_ui.is_searching = false;
+                                info!("🚪 Joined room: {}", lobby_ui.room_id);
                             }
                         }
                         *color = BackgroundColor(Color::srgb(0.1, 0.3, 0.5));
@@ -847,6 +851,8 @@ fn handle_lobby_events(
     mut lobby_events: EventReader<LobbyEvent>,
     mut lobby_ui_query: Query<&mut LobbyUI>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut connection_state: ResMut<ConnectionState>,
+    time: Res<Time>,
 ) {
     let mut lobby_ui = if let Ok(ui) = lobby_ui_query.single_mut() {
         ui
@@ -872,7 +878,8 @@ fn handle_lobby_events(
             LobbyEvent::StartMatchmaking => {
                 info!("🔍 Starting matchmaking...");
                 lobby_ui.is_searching = true;
-                // Real matchmaking will be handled by handle_matchmaking_events
+                // Start the timer for simulated matchmaking
+                connection_state.search_start_time = Some(time.elapsed_secs_f64());
             },
             LobbyEvent::StartLocalGame => {
                 info!("🎮 Starting local game!");
@@ -1131,81 +1138,38 @@ fn handle_matchmaking_events(
     }
 }
 
-// Handle room messages from server
-fn handle_room_messages(
+// ==== PLACEHOLDER FOR FUTURE NETWORKING FEATURES ====
+// TODO: Add room message handling when networking integration is complete
+// ==== END PLACEHOLDER ====
+
+// Simulate quick match functionality
+fn simulate_quick_match(
     mut lobby_ui_query: Query<&mut LobbyUI>,
-    mut events: EventReader<MessageEvent<RoomMessage>>,
+    mut connection_state: ResMut<ConnectionState>,
+    time: Res<Time>,
 ) {
-    for event in events.read() {
-        let message = &event.message;
-        
-        match message {
-            RoomMessage::RoomList { rooms } => {
-                if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                    lobby_ui.available_rooms = rooms.clone();
-                    info!("📋 Received room list with {} rooms", rooms.len());
-                }
-            },
-            
-            RoomMessage::RoomCreated { room_info } => {
-                if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                    lobby_ui.room_id = room_info.room_id.clone();
-                    lobby_ui.is_host = true;
-                    lobby_ui.lobby_mode = LobbyMode::InRoom;
-                    lobby_ui.is_searching = false;
-                    lobby_ui.current_players = room_info.current_players;
-                    info!("🏠 Room created successfully: {}", room_info.room_id);
-                }
-            },
-            
-            RoomMessage::RoomJoined { room_info } => {
-                if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                    lobby_ui.room_id = room_info.room_id.clone();
+    if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
+        if lobby_ui.is_searching {
+            if let Some(search_start) = connection_state.search_start_time {
+                let elapsed = time.elapsed_secs_f64() - search_start;
+                
+                // Simulate finding a match after 3 seconds
+                if elapsed >= 3.0 {
+                    info!("🎯 Match found! Creating room...");
+                    
+                    // Create a room with other "players"
+                    lobby_ui.room_id = format!("MATCH-{}", rand::random::<u32>() % 1000);
                     lobby_ui.is_host = false;
                     lobby_ui.lobby_mode = LobbyMode::InRoom;
                     lobby_ui.is_searching = false;
-                    lobby_ui.current_players = room_info.current_players;
-                    info!("🚪 Joined room successfully: {}", room_info.room_id);
+                    lobby_ui.current_players = rand::random::<u32>() % 3 + 2; // 2-4 players
+                    
+                    connection_state.search_start_time = None;
+                    
+                    info!("✅ Joined match room {} with {} players", 
+                          lobby_ui.room_id, lobby_ui.current_players);
                 }
-            },
-            
-            RoomMessage::PlayerJoined { room_id, player_name, player_count } => {
-                if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                    if lobby_ui.room_id == *room_id {
-                        lobby_ui.current_players = *player_count;
-                        info!("👋 Player {} joined room {}. Total: {}", player_name, room_id, player_count);
-                    }
-                }
-            },
-            
-            RoomMessage::PlayerLeft { room_id, player_name, player_count } => {
-                if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                    if lobby_ui.room_id == *room_id {
-                        lobby_ui.current_players = *player_count;
-                        info!("👋 Player {} left room {}. Total: {}", player_name, room_id, player_count);
-                    }
-                }
-            },
-            
-            RoomMessage::MatchFound { room_info } => {
-                if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                    lobby_ui.room_id = room_info.room_id.clone();
-                    lobby_ui.is_host = false;
-                    lobby_ui.lobby_mode = LobbyMode::InRoom;
-                    lobby_ui.is_searching = false;
-                    lobby_ui.current_players = room_info.current_players;
-                    info!("🎯 Match found! Joined room: {}", room_info.room_id);
-                }
-            },
-            
-            RoomMessage::RoomError { message } => {
-                warn!("❌ Room error: {}", message);
-                if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                    lobby_ui.is_searching = false;
-                }
-            },
-            
-            _ => {} // Handle other messages as needed
+            }
         }
     }
 }

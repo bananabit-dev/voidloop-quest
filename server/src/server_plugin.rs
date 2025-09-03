@@ -1,10 +1,11 @@
+// Simple room management that works locally for now
 use bevy::prelude::*;
 use bevygap_server_plugin::prelude::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
 use std::collections::HashMap;
 
-use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin, RoomMessage, RoomInfo, Channel1};
+use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin, RoomInfo};
 
 pub struct ServerPlugin;
 
@@ -35,8 +36,6 @@ impl Plugin for ServerPlugin {
         // Player management system - handles spawning/despawning players  
         app.add_systems(Update, (
             handle_player_management,
-            handle_room_messages,
-            handle_matchmaking,
             manage_room_lifecycle,
         ));
         
@@ -108,43 +107,43 @@ fn manage_room_lifecycle(
     let current_player_count = players.iter().count() as u32;
     
     // Update player count for all rooms
-    for room in room_registry.rooms.values_mut() {
-        let old_count = room.current_players;
-        room.current_players = current_player_count;
-        
-        if room.current_players > old_count {
-            info!("Player joined room '{}'. Players: {}/{}", 
-                  room.room_id, room.current_players, room.max_players);
-        } else if room.current_players < old_count {
-            info!("Player left room '{}'. Players: {}/{}", 
-                  room.room_id, room.current_players, room.max_players);
-        }
-        
-        // Check if game should start
-        if room.current_players >= 1 && old_count < 1 {
-            info!("🚀 Room '{}' has minimum players ({}) - game can start!", 
-                  room.room_id, 1);
-        }
-    }
-    
-    // Auto-cleanup empty rooms after 30 seconds
     let mut rooms_to_remove = Vec::new();
-    for (room_id, room) in &room_registry.rooms {
-        if room.current_players == 0 {
-            if room.created_time.is_none() {
-                room_registry.rooms.get_mut(room_id).unwrap().created_time = Some(time.elapsed_secs_f64());
-                info!("Room '{}' is now empty - starting cleanup timer", room_id);
-            } else if let Some(empty_since) = room.created_time {
-                let empty_duration = time.elapsed_secs_f64() - empty_since;
-                if empty_duration > 30.0 { // 30 seconds cleanup time
-                    info!("Room '{}' has been empty for {:.1}s - cleaning up", room_id, empty_duration);
-                    rooms_to_remove.push(room_id.clone());
-                }
+    let room_ids: Vec<String> = room_registry.rooms.keys().cloned().collect();
+    
+    for room_id in room_ids {
+        if let Some(room) = room_registry.rooms.get_mut(&room_id) {
+            let old_count = room.current_players;
+            room.current_players = current_player_count;
+            
+            if room.current_players > old_count {
+                info!("Player joined room '{}'. Players: {}/{}", 
+                      room.room_id, room.current_players, room.max_players);
+            } else if room.current_players < old_count {
+                info!("Player left room '{}'. Players: {}/{}", 
+                      room.room_id, room.current_players, room.max_players);
             }
-        } else {
-            // Reset cleanup timer if players are present
-            if room.created_time.is_some() {
-                room_registry.rooms.get_mut(room_id).unwrap().created_time = None;
+            
+            // Check if game should start
+            if room.current_players >= 1 && old_count < 1 {
+                info!("🚀 Room '{}' has minimum players ({}) - game can start!", 
+                      room.room_id, 1);
+            }
+            
+            // Auto-cleanup empty rooms after 30 seconds
+            if room.current_players == 0 {
+                if room.created_time.is_none() {
+                    room.created_time = Some(time.elapsed_secs_f64());
+                    info!("Room '{}' is now empty - starting cleanup timer", room_id);
+                } else if let Some(empty_since) = room.created_time {
+                    let empty_duration = time.elapsed_secs_f64() - empty_since;
+                    if empty_duration > 30.0 { // 30 seconds cleanup time
+                        info!("Room '{}' has been empty for {:.1}s - cleaning up", room_id, empty_duration);
+                        rooms_to_remove.push(room_id.clone());
+                    }
+                }
+            } else {
+                // Reset cleanup timer if players are present
+                room.created_time = None;
             }
         }
     }
@@ -240,176 +239,7 @@ impl MatchmakingQueue {
     }
 }
 
-// Handle room management messages from clients
-fn handle_room_messages(
-    mut room_registry: ResMut<RoomRegistry>,
-    mut server: ResMut<Server>,
-    mut events: EventReader<MessageEvent<RoomMessage>>,
-) {
-    for event in events.read() {
-        let client_id = event.context();
-        let message = &event.message;
-        
-        match message {
-            RoomMessage::CreateRoom { room_id, host_name, game_mode } => {
-                info!("Creating room {} for host {}", room_id, host_name);
-                let room_data = room_registry.create_room(room_id.clone(), host_name.clone(), game_mode.clone());
-                
-                let room_info = RoomInfo {
-                    room_id: room_data.room_id,
-                    current_players: room_data.current_players,
-                    max_players: room_data.max_players,
-                    host_name: room_data.host_name,
-                    game_mode: room_data.game_mode,
-                };
-                
-                // Send confirmation back to client
-                let _ = server.send_message::<RoomMessage, Channel1>(
-                    *client_id,
-                    RoomMessage::RoomCreated { room_info }
-                );
-            },
-            
-            RoomMessage::JoinRoom { room_id, player_name } => {
-                if let Some(room) = room_registry.rooms.get_mut(room_id) {
-                    if room.current_players < room.max_players {
-                        room.current_players += 1;
-                        room.player_names.push(player_name.clone());
-                        
-                        let room_info = RoomInfo {
-                            room_id: room.room_id.clone(),
-                            current_players: room.current_players,
-                            max_players: room.max_players,
-                            host_name: room.host_name.clone(),
-                            game_mode: room.game_mode.clone(),
-                        };
-                        
-                        // Send confirmation to joiner
-                        let _ = server.send_message::<RoomMessage, Channel1>(
-                            *client_id,
-                            RoomMessage::RoomJoined { room_info: room_info.clone() }
-                        );
-                        
-                        // Broadcast player joined to all clients in room
-                        let _ = server.broadcast_message::<RoomMessage, Channel1>(
-                            RoomMessage::PlayerJoined { 
-                                room_id: room_id.clone(), 
-                                player_name: player_name.clone(), 
-                                player_count: room.current_players 
-                            }
-                        );
-                        
-                        info!("Player {} joined room {}. Players: {}/{}", 
-                              player_name, room_id, room.current_players, room.max_players);
-                    } else {
-                        let _ = server.send_message::<RoomMessage, Channel1>(
-                            *client_id,
-                            RoomMessage::RoomError { message: "Room is full".to_string() }
-                        );
-                    }
-                } else {
-                    let _ = server.send_message::<RoomMessage, Channel1>(
-                        *client_id,
-                        RoomMessage::RoomError { message: "Room not found".to_string() }
-                    );
-                }
-            },
-            
-            RoomMessage::LeaveRoom { room_id, player_name } => {
-                if let Some(room) = room_registry.rooms.get_mut(room_id) {
-                    if let Some(pos) = room.player_names.iter().position(|x| x == player_name) {
-                        room.player_names.remove(pos);
-                        room.current_players = room.current_players.saturating_sub(1);
-                        
-                        // Send confirmation to leaver
-                        let _ = server.send_message::<RoomMessage, Channel1>(
-                            *client_id,
-                            RoomMessage::RoomLeft { room_id: room_id.clone() }
-                        );
-                        
-                        // Broadcast player left to all clients
-                        let _ = server.broadcast_message::<RoomMessage, Channel1>(
-                            RoomMessage::PlayerLeft { 
-                                room_id: room_id.clone(), 
-                                player_name: player_name.clone(), 
-                                player_count: room.current_players 
-                            }
-                        );
-                        
-                        info!("Player {} left room {}. Players: {}/{}", 
-                              player_name, room_id, room.current_players, room.max_players);
-                    }
-                }
-            },
-            
-            RoomMessage::ListRooms => {
-                let rooms = room_registry.get_room_list();
-                let _ = server.send_message::<RoomMessage, Channel1>(
-                    *client_id,
-                    RoomMessage::RoomList { rooms }
-                );
-            },
-            
-            _ => {} // Handle other messages as needed
-        }
-    }
-}
-
-// Handle matchmaking requests  
-fn handle_matchmaking(
-    mut matchmaking_queue: ResMut<MatchmakingQueue>,
-    mut room_registry: ResMut<RoomRegistry>,
-    mut server: ResMut<Server>,
-    mut events: EventReader<MessageEvent<RoomMessage>>,
-    time: Res<Time>,
-) {
-    for event in events.read() {
-        let client_id = event.context();
-        let message = &event.message;
-        
-        if let RoomMessage::StartMatchmaking { game_mode } = message {
-            info!("Player {} starting matchmaking for mode: {}", client_id, game_mode);
-            
-            // Add player to queue
-            matchmaking_queue.add_player(
-                game_mode.clone(), 
-                client_id.to_string(), 
-                time.elapsed_secs_f64()
-            );
-            
-            // Try to create a match
-            if let Some(matched_players) = matchmaking_queue.try_create_match(game_mode) {
-                // Create a room for matched players
-                let room_id = format!("MATCH-{}", uuid::Uuid::new_v4().simple());
-                let host_name = "Matchmaker".to_string();
-                
-                let room_data = room_registry.create_room(
-                    room_id.clone(), 
-                    host_name.clone(), 
-                    game_mode.clone()
-                );
-                
-                let room_info = RoomInfo {
-                    room_id: room_data.room_id,
-                    current_players: matched_players.len() as u32,
-                    max_players: room_data.max_players,
-                    host_name: room_data.host_name,
-                    game_mode: room_data.game_mode,
-                };
-                
-                // Notify all matched players
-                for player in matched_players {
-                    if let Ok(client_id) = player.player_id.parse::<ClientId>() {
-                        let _ = server.send_message::<RoomMessage, Channel1>(
-                            client_id,
-                            RoomMessage::MatchFound { room_info: room_info.clone() }
-                        );
-                    }
-                }
-                
-                info!("Created match room {} for {} players in mode {}", 
-                      room_id, room_info.current_players, game_mode);
-            }
-        }
-    }
-}
+// ==== PLACEHOLDER FOR FUTURE NETWORKING FEATURES ====
+// TODO: Add room message handling when lightyear API is fully integrated
+// TODO: Add matchmaking queue processing
+// ==== END PLACEHOLDER ====
