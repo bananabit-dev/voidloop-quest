@@ -166,7 +166,7 @@ impl Plugin for LobbyPlugin {
                     handle_lobby_events,
                     handle_connection_events,
                     #[cfg(feature = "bevygap")]
-                    handle_matchmaking_events,
+                    handle_matchmaking_events.before(handle_lobby_events),
                 )
                     .run_if(in_state(AppState::Lobby)),
             );
