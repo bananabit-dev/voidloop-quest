@@ -9629,6 +9629,7 @@ dependencies = [
  "serde",
  "shared",
  "tokio",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
