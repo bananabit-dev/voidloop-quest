@@ -122,6 +122,8 @@ pub enum LobbyEvent {
     LeaveRoom,
     // New events for real matchmaking
     StartMatchmaking,
+    RequestRoomList,
+    RoomListReceived(Vec<RoomInfo>),
     LobbyCreated(String), // lobby name
     #[cfg(feature = "bevygap")]
     LobbyDeployed(LobbyReadResponse),
@@ -693,34 +695,9 @@ fn handle_lobby_input(
                         *color = BackgroundColor(Color::srgb(0.1, 0.5, 0.1));
                         
                     } else if join_btn.is_some() {
-                        info!("🚪 Joining room...");
-                        // For now, populate with dummy rooms
-                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                            lobby_ui.available_rooms = vec![
-                                RoomInfo {
-                                    room_id: "ROOM001".to_string(),
-                                    current_players: 2,
-                                    max_players: 4,
-                                    host_name: "Player123".to_string(),
-                                    game_mode: "casual".to_string(),
-                                },
-                                RoomInfo {
-                                    room_id: "ROOM002".to_string(),
-                                    current_players: 1,
-                                    max_players: 4,
-                                    host_name: "GamerPro".to_string(),
-                                    game_mode: "ranked".to_string(),
-                                },
-                                RoomInfo {
-                                    room_id: "ROOM003".to_string(),
-                                    current_players: 3,
-                                    max_players: 4,
-                                    host_name: "QuickPlayer".to_string(),
-                                    game_mode: "custom".to_string(),
-                                },
-                            ];
-                        }
-                        lobby_events.write(LobbyEvent::JoinRoom);
+                        info!("🚪 Requesting room list from server...");
+                        // Request real rooms from server instead of using dummy data
+                        lobby_events.write(LobbyEvent::RequestRoomList);
                         *color = BackgroundColor(Color::srgb(0.1, 0.3, 0.5));
                         
                     } else if local_btn.is_some() {
@@ -891,6 +868,19 @@ fn handle_lobby_events(
             LobbyEvent::JoinRoom => {
                 lobby_ui.lobby_mode = LobbyMode::JoinRoom;
                 info!("🚪 Switching to join room mode");
+            },
+            LobbyEvent::RequestRoomList => {
+                info!("📋 Requesting room list from server...");
+                // For now, since we don't have networking fully integrated,
+                // simulate an empty room list response
+                // TODO: Replace with actual network request when server integration is complete
+                lobby_ui.available_rooms = Vec::new();
+                lobby_ui.lobby_mode = LobbyMode::JoinRoom;
+            },
+            LobbyEvent::RoomListReceived(rooms) => {
+                info!("📋 Received {} rooms from server", rooms.len());
+                lobby_ui.available_rooms = rooms.clone();
+                lobby_ui.lobby_mode = LobbyMode::JoinRoom;
             },
             LobbyEvent::EnterRoomId(room_id) => {
                 lobby_ui.room_id = room_id.clone();

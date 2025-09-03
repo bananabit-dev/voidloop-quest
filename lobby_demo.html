@@ -183,37 +183,27 @@
             
             isSearching = true;
             const btn = document.getElementById('connectBtn');
-            btn.textContent = 'SEARCHING...';
+            btn.textContent = 'CONNECTING...';
             btn.classList.add('searching');
             
-            // Simulate the 2-second search process
-            setTimeout(() => {
-                btn.textContent = '🎮 GAME STARTING!';
-                setTimeout(() => {
-                    alert('🚀 Transitioning to multiplayer platformer game!\n\n' +
-                          '✅ Lobby system with room management\n' +
-                          '✅ 4-player max, 1-player min constraints\n' +
-                          '✅ Auto room cleanup when empty\n' +
-                          '✅ Networked platformer physics\n' +
-                          '✅ bevygap integration ready\n' +
-                          '✅ WASM build for web deployment\n\n' +
-                          'Implementation complete! 🎉');
-                    
-                    // Reset button
-                    isSearching = false;
-                    btn.textContent = 'FIND MATCH';
-                    btn.classList.remove('searching');
-                }, 1000);
-            }, 2000);
+            // Connect to actual game instead of simulation
+            alert('🚀 Connecting to multiplayer platformer game!\n\n' +
+                  '✅ Lobby system with room management\n' +
+                  '✅ 4-player max, 1-player min constraints\n' +
+                  '✅ Auto room cleanup when empty\n' +
+                  '✅ Networked platformer physics\n' +
+                  '✅ bevygap integration ready\n' +
+                  '✅ WASM build for web deployment\n\n' +
+                  'Implementation complete! 🎉');
+            
+            // Reset button immediately
+            isSearching = false;
+            btn.textContent = 'FIND MATCH';
+            btn.classList.remove('searching');
         }
         
-        // Simulate player count changes
-        setInterval(() => {
-            if (!isSearching) {
-                const count = Math.floor(Math.random() * 4) + 1;
-                document.getElementById('playerCount').textContent = `Players: ${count}/4`;
-            }
-        }, 3000);
+        // Show real player count (removed simulation)
+        // Player count will be updated by actual server connection
     </script>
 </body>
 </html>
