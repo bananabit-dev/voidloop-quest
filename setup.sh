@@ -63,8 +63,8 @@ MM_IMAGE="${MM_IMAGE:-bananabit/bevygap_matchmaker:latest}"
 read -rp "Lobby image [bananabit/bevygap_lobby:latest]: " LOBBY_IMAGE
 LOBBY_IMAGE="${LOBBY_IMAGE:-bananabit/bevygap_lobby:latest}"
 
-read -rp "Max players per session [16]: " MAX_PLAYERS
-MAX_PLAYERS="${MAX_PLAYERS:-16}"
+read -rp "Max players per session [4]: " MAX_PLAYERS
+MAX_PLAYERS="${MAX_PLAYERS:-4}"
 
 read -rp "Lightyear protocol ID [80085]: " LIGHTYEAR_PROTOCOL_ID
 LIGHTYEAR_PROTOCOL_ID="${LIGHTYEAR_PROTOCOL_ID:-80085}"

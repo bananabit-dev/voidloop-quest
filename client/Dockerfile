@@ -54,7 +54,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cargo chef cook --release --target wasm32-unknown-unknown \
     --package voidloop-quest-client \
-    --no-default-features \
     --recipe-path /app/recipe.json
 
 # Copy the entire workspace
@@ -64,7 +63,7 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target \
-    cargo build --release --target wasm32-unknown-unknown --package voidloop-quest-client --no-default-features && \
+    cargo build --release --target wasm32-unknown-unknown --package voidloop-quest-client && \
     wasm-bindgen --no-typescript --target web \
         --out-dir /app/www \
         --out-name "voidloop-quest" \
