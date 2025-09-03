@@ -1359,7 +1359,6 @@ async fn create_and_deploy_lobby(
     }
 }
 
-// Helper function to handle the lobby creation result
 #[cfg(all(feature = "bevygap", not(target_arch = "wasm32")))]
 fn handle_lobby_creation_result(
     create_result: Result<(String, LobbyReadResponse), String>,
