@@ -13,7 +13,7 @@ use shared::{RoomInfo};
 
 #[derive(Resource, Default)]
 pub struct ConnectionState {
-    pub search_start_time: Option<f64>,
+    // Reserved for future connection state tracking
 }
 
 // Resource for tracking Edgegap lobby state
@@ -149,7 +149,6 @@ impl Plugin for LobbyPlugin {
                     update_simple_ui,
                     handle_lobby_events,
                     handle_connection_events,
-                    simulate_quick_match,
                     #[cfg(feature = "bevygap")]
                     handle_matchmaking_events,
                 ).run_if(in_state(AppState::Lobby))
@@ -681,10 +680,9 @@ fn handle_lobby_input(
                         
                     } else if quick_match_btn.is_some() {
                         info!("🎯 Starting quick match...");
-                        // For now, simulate finding a match quickly
+                        // Trigger real BevyGap matchmaking via StartMatchmaking event
                         if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
                             lobby_ui.is_searching = true;
-                            // TODO: Add real matchmaking integration
                         }
                         lobby_events.write(LobbyEvent::StartMatchmaking);
                         *color = BackgroundColor(Color::srgb(0.5, 0.1, 0.5));
@@ -851,8 +849,6 @@ fn handle_lobby_events(
     mut lobby_events: EventReader<LobbyEvent>,
     mut lobby_ui_query: Query<&mut LobbyUI>,
     mut next_state: ResMut<NextState<AppState>>,
-    mut connection_state: ResMut<ConnectionState>,
-    time: Res<Time>,
 ) {
     let mut lobby_ui = if let Ok(ui) = lobby_ui_query.single_mut() {
         ui
@@ -878,8 +874,7 @@ fn handle_lobby_events(
             LobbyEvent::StartMatchmaking => {
                 info!("🔍 Starting matchmaking...");
                 lobby_ui.is_searching = true;
-                // Start the timer for simulated matchmaking
-                connection_state.search_start_time = Some(time.elapsed_secs_f64());
+                // Real BevyGap matchmaking will be handled by handle_matchmaking_events
             },
             LobbyEvent::StartLocalGame => {
                 info!("🎮 Starting local game!");
@@ -932,36 +927,11 @@ fn handle_lobby_events(
     }
 }
 
-// Handle bevygap connection events to transition from lobby to game
-fn handle_connection_events(
-    mut next_state: ResMut<NextState<AppState>>,
-    mut lobby_ui_query: Query<&mut LobbyUI>,
-    mut connection_state: ResMut<ConnectionState>,
-    time: Res<Time>,
-) {
-    // For now, we'll use a simple timer-based approach for testing
-    // In production, this should listen for actual bevygap connection success events
-    if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-        if lobby_ui.is_searching {
-            let current_time = time.elapsed_secs_f64();
-            
-            // Start timing if not already started
-            if connection_state.search_start_time.is_none() {
-                connection_state.search_start_time = Some(current_time);
-                info!("Started searching for match...");
-            }
-            
-            // Check if 2 seconds have passed (simulating connection success)
-            if let Some(start_time) = connection_state.search_start_time {
-                if current_time - start_time >= 2.0 {
-                    info!("🎮 Connection successful - entering game!");
-                    lobby_ui.is_searching = false;
-                    connection_state.search_start_time = None; // Reset for next time
-                    next_state.set(AppState::InGame);
-                }
-            }
-        }
-    }
+// Handle bevygap connection events to transition from lobby to game  
+fn handle_connection_events() {
+    // TODO: Listen for actual BevyGap connection success/failure events here
+    // For now, the real connection handling is done via LobbyEvent::ConnectedToServer
+    // in handle_lobby_events, so this function is currently a placeholder
 }
 
 // Helper function to get matchmaker URL (similar to client_plugin.rs)
@@ -1047,7 +1017,7 @@ fn handle_matchmaking_events(
                     token.clone()
                 } else {
                     error!("🚫 EDGEGAP_TOKEN not configured! Set environment variable EDGEGAP_TOKEN");
-                    lobby_events_writer.send(LobbyEvent::LobbyDeploymentFailed(
+                    lobby_events_writer.write(LobbyEvent::LobbyDeploymentFailed(
                         "EDGEGAP_TOKEN not configured".to_string()
                     ));
                     return;
@@ -1141,35 +1111,3 @@ fn handle_matchmaking_events(
 // ==== PLACEHOLDER FOR FUTURE NETWORKING FEATURES ====
 // TODO: Add room message handling when networking integration is complete
 // ==== END PLACEHOLDER ====
-
-// Simulate quick match functionality
-fn simulate_quick_match(
-    mut lobby_ui_query: Query<&mut LobbyUI>,
-    mut connection_state: ResMut<ConnectionState>,
-    time: Res<Time>,
-) {
-    if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-        if lobby_ui.is_searching {
-            if let Some(search_start) = connection_state.search_start_time {
-                let elapsed = time.elapsed_secs_f64() - search_start;
-                
-                // Simulate finding a match after 3 seconds
-                if elapsed >= 3.0 {
-                    info!("🎯 Match found! Creating room...");
-                    
-                    // Create a room with other "players"
-                    lobby_ui.room_id = format!("MATCH-{}", rand::random::<u32>() % 1000);
-                    lobby_ui.is_host = false;
-                    lobby_ui.lobby_mode = LobbyMode::InRoom;
-                    lobby_ui.is_searching = false;
-                    lobby_ui.current_players = rand::random::<u32>() % 3 + 2; // 2-4 players
-                    
-                    connection_state.search_start_time = None;
-                    
-                    info!("✅ Joined match room {} with {} players", 
-                          lobby_ui.room_id, lobby_ui.current_players);
-                }
-            }
-        }
-    }
-}

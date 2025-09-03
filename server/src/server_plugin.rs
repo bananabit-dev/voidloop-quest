@@ -1,5 +1,6 @@
 // Simple room management that works locally for now
 use bevy::prelude::*;
+#[cfg(feature = "bevygap")]
 use bevygap_server_plugin::prelude::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
@@ -21,6 +22,7 @@ impl Plugin for ServerPlugin {
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
         
         // Networking
+        #[cfg(feature = "bevygap")]
         app.add_plugins(BevygapServerPlugin);
         
         // Shared game logic
