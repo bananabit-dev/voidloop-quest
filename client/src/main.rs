@@ -5,7 +5,8 @@ mod client_plugin;
 mod screens;
 
 fn main() {
-     println!(r#"
+    println!(
+        r#"
 
 
 
@@ -36,11 +37,10 @@ fn main() {
     ╚══════════════════════════════════════════════════════════════╝
 
 
-    "#);
+    "#
+    );
     info!("🎮 Simple Platformer Client starting...");
     info!("🔐 Using BevyGap for matchmaking and connection");
-    
-    App::new()
-        .add_plugins(ClientPlugin)
-        .run();
+
+    App::new().add_plugins(ClientPlugin).run();
 }

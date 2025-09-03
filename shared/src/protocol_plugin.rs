@@ -82,19 +82,51 @@ pub struct MatchmakingRequest {
 // Messages for room operations
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum RoomMessage {
-    CreateRoom { room_id: String, host_name: String, game_mode: String },
-    JoinRoom { room_id: String, player_name: String },
-    LeaveRoom { room_id: String, player_name: String },
+    CreateRoom {
+        room_id: String,
+        host_name: String,
+        game_mode: String,
+    },
+    JoinRoom {
+        room_id: String,
+        player_name: String,
+    },
+    LeaveRoom {
+        room_id: String,
+        player_name: String,
+    },
     ListRooms,
-    RoomList { rooms: Vec<RoomInfo> },
-    RoomCreated { room_info: RoomInfo },
-    RoomJoined { room_info: RoomInfo },
-    RoomLeft { room_id: String },
-    PlayerJoined { room_id: String, player_name: String, player_count: u32 },
-    PlayerLeft { room_id: String, player_name: String, player_count: u32 },
-    StartMatchmaking { game_mode: String },
-    MatchFound { room_info: RoomInfo },
-    RoomError { message: String },
+    RoomList {
+        rooms: Vec<RoomInfo>,
+    },
+    RoomCreated {
+        room_info: RoomInfo,
+    },
+    RoomJoined {
+        room_info: RoomInfo,
+    },
+    RoomLeft {
+        room_id: String,
+    },
+    PlayerJoined {
+        room_id: String,
+        player_name: String,
+        player_count: u32,
+    },
+    PlayerLeft {
+        room_id: String,
+        player_name: String,
+        player_count: u32,
+    },
+    StartMatchmaking {
+        game_mode: String,
+    },
+    MatchFound {
+        room_info: RoomInfo,
+    },
+    RoomError {
+        message: String,
+    },
 }
 
 // Protocol Plugin
@@ -106,25 +138,27 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<Player>()
             .add_prediction(PredictionMode::Full)
             .add_interpolation(InterpolationMode::Full);
-            
+
         app.register_component::<PlayerTransform>()
             .add_prediction(PredictionMode::Full)
             .add_interpolation(InterpolationMode::Full);
-            
+
         app.register_component::<PlayerColor>()
             .add_prediction(PredictionMode::Once);
-            
+
         app.register_component::<Platform>()
             .add_prediction(PredictionMode::Once);
-        
+
         // Register channel for room messages
         app.add_channel::<Channel1>(ChannelSettings {
             mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
             ..default()
         });
-        
+
         // Register input
-        app.add_plugins(lightyear::prelude::input::leafwing::InputPlugin::<PlayerActions>::default());
+        app.add_plugins(lightyear::prelude::input::leafwing::InputPlugin::<
+            PlayerActions,
+        >::default());
     }
 }
 
@@ -135,7 +169,7 @@ pub fn protocol() -> ProtocolPlugin {
 
 // ==== CUSTOM GAME CODE AREA - Add your game-specific components and systems here ====
 // Example: Add new components, systems, or game mechanics below this line
-// 
+//
 // #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 // pub struct MyCustomComponent {
 //     pub value: f32,

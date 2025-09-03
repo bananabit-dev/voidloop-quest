@@ -8,8 +8,8 @@ use bevygap_client_plugin::prelude::BevygapConnectExt;
 
 use leafwing_input_manager::prelude::*;
 
-use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin};
-use crate::screens::{LobbyPlugin, AppState};
+use crate::screens::{AppState, LobbyPlugin};
+use shared::{Platform, Player, PlayerActions, PlayerColor, PlayerTransform, SharedPlugin};
 
 #[derive(Resource, Default)]
 struct FloorSpawned(bool);
@@ -21,7 +21,7 @@ impl Plugin for ClientPlugin {
         // Get matchmaker URL from browser location
         let matchmaker_url = get_matchmaker_url();
         info!("Matchmaker url: {}", matchmaker_url);
-        
+
         // Basic Bevy plugins
         app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -32,38 +32,42 @@ impl Plugin for ClientPlugin {
             }),
             ..default()
         }));
-        
+
         // Input plugin
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
-        
+
         // Networking plugins (only if bevygap feature is enabled)
         #[cfg(feature = "bevygap")]
         app.add_plugins(BevygapClientPlugin);
-        
+
         // Lobby system - handles 4-player lobby UI and matchmaking
         app.add_plugins(LobbyPlugin);
-        
+
         // Shared game logic
         app.add_plugins(SharedPlugin);
-        
+
         // Camera setup - needed for both Lobby UI and InGame
         app.add_systems(Startup, setup_camera);
-        
+
         // Game setup systems (only run when in game)
         app.add_systems(OnEnter(AppState::InGame), (setup_game, spawn_local_player));
-        app.add_systems(Update, (
-            spawn_player_visual,
-            spawn_platform_visual,
-            update_player_visual,
-            handle_player_spawn,
-        ).run_if(in_state(AppState::InGame)));
+        app.add_systems(
+            Update,
+            (
+                spawn_player_visual,
+                spawn_platform_visual,
+                update_player_visual,
+                handle_player_spawn,
+            )
+                .run_if(in_state(AppState::InGame)),
+        );
         app.insert_resource(FloorSpawned::default());
 
         // Remove auto-connect - now handled by lobby UI
         // app.add_systems(Startup, |mut commands: Commands| {
         //     commands.bevygap_connect_client();
         // });
-        
+
         // ==== CUSTOM CLIENT SYSTEMS AREA - Add your client-specific systems here ====
         // Example: UI, effects, client-side predictions, etc.
         // app.add_systems(Update, your_custom_client_system);
@@ -109,10 +113,10 @@ fn setup_game(mut commands: Commands) {
 
 fn spawn_local_player(mut commands: Commands) {
     info!("🎮 Spawning local player for game...");
-    
+
     let spawn_pos = Vec3::new(0.0, 100.0, 0.0);
     let color = Color::srgb(0.2, 0.8, 0.2); // Green for local player
-    
+
     commands.spawn((
         Player::default(),
         PlayerTransform {
@@ -129,13 +133,13 @@ fn spawn_local_player(mut commands: Commands) {
             .with(PlayerActions::Jump, KeyCode::ArrowUp),
         ActionState::<PlayerActions>::default(),
     ));
-    
+
     info!("✅ Local player spawned at position {:?} with controls: A/D or Arrow keys to move, Space/W/Up to jump", spawn_pos);
 }
 
 fn spawn_platforms(commands: &mut Commands) {
     // Floor is handled in the physics system at y = -200
-    
+
     // Add some floating platforms
     let platform_positions = vec![
         Vec3::new(-200.0, -100.0, 0.0),
@@ -144,20 +148,14 @@ fn spawn_platforms(commands: &mut Commands) {
         Vec3::new(-300.0, 50.0, 0.0),
         Vec3::new(300.0, 100.0, 0.0),
     ];
-    
+
     for pos in platform_positions {
-        commands.spawn((
-            Platform,
-            Transform::from_translation(pos),
-        ));
+        commands.spawn((Platform, Transform::from_translation(pos)));
     }
 }
 
 // Handle when a new player spawns (including local player)
-fn handle_player_spawn(
-    mut commands: Commands,
-    new_players: Query<Entity, Added<Player>>,
-) {
+fn handle_player_spawn(mut commands: Commands, new_players: Query<Entity, Added<Player>>) {
     for entity in new_players.iter() {
         // Add input handling for local player
         // TODO: Determine if this is the local player
@@ -172,7 +170,7 @@ fn handle_player_spawn(
                 .with(PlayerActions::Jump, KeyCode::ArrowUp),
             ActionState::<PlayerActions>::default(),
         ));
-        
+
         info!("Player spawned with controls: A/D or Arrow keys to move, Space/W to jump");
     }
 }
@@ -208,7 +206,7 @@ fn spawn_platform_visual(
             *transform,
         ));
     }
-    
+
     // Also spawn a visual floor (only once on startup)
     if !floor_spawned.0 {
         floor_spawned.0 = true;
@@ -231,7 +229,7 @@ fn update_player_visual(
 
 // ==== CUSTOM CLIENT RENDERING AREA - Add your visual effects and UI here ====
 // Example: Particle effects, UI overlays, animations, etc.
-// 
+//
 // fn my_custom_render_system(
 //     // your queries and resources
 // ) {

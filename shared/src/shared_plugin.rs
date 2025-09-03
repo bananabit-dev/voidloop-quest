@@ -1,17 +1,21 @@
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 
-use crate::protocol_plugin::{Player, PlayerActions, PlayerTransform, Platform};
+use crate::protocol_plugin::{Platform, Player, PlayerActions, PlayerTransform};
 
 pub struct SharedPlugin;
 
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (
-            player_movement_system,
-            apply_gravity_system,
-            ground_detection_system,
-        ).chain());
+        app.add_systems(
+            FixedUpdate,
+            (
+                player_movement_system,
+                apply_gravity_system,
+                ground_detection_system,
+            )
+                .chain(),
+        );
     }
 }
 
@@ -32,16 +36,16 @@ pub fn player_movement_system(
     for (mut player, action_state) in query.iter_mut() {
         // Horizontal movement
         let mut move_delta = 0.0;
-        
+
         if action_state.pressed(&PlayerActions::MoveLeft) {
             move_delta -= 1.0;
         }
         if action_state.pressed(&PlayerActions::MoveRight) {
             move_delta += 1.0;
         }
-        
+
         player.velocity.x = move_delta * MOVE_SPEED;
-        
+
         // Jump (only when grounded)
         if action_state.just_pressed(&PlayerActions::Jump) && player.grounded {
             player.velocity.y = JUMP_FORCE;
@@ -56,21 +60,21 @@ pub fn apply_gravity_system(
     time: Res<Time>,
 ) {
     let dt = time.delta_secs();
-    
+
     for (mut player, mut transform) in query.iter_mut() {
         // Apply gravity if not grounded
         if !player.grounded {
             player.velocity.y += GRAVITY * dt;
             player.velocity.y = player.velocity.y.max(MAX_FALL_SPEED);
         }
-        
+
         // Apply velocity to position
         transform.translation.x += player.velocity.x * dt;
         transform.translation.y += player.velocity.y * dt;
-        
+
         // Keep player in bounds (simple boundary)
         transform.translation.x = transform.translation.x.clamp(-400.0, 400.0);
-        
+
         // Ground check (simple floor at y = -200)
         if transform.translation.y <= -200.0 {
             transform.translation.y = -200.0;
@@ -89,7 +93,7 @@ pub fn ground_detection_system(
         let player_bottom = player_transform.translation.y - PLAYER_SIZE / 2.0;
         let player_left = player_transform.translation.x - PLAYER_SIZE / 2.0;
         let player_right = player_transform.translation.x + PLAYER_SIZE / 2.0;
-        
+
         // Check collision with platforms
         let mut on_platform = false;
         for platform_transform in platforms.iter() {
@@ -97,16 +101,19 @@ pub fn ground_detection_system(
             let platform_bottom = platform_transform.translation.y - PLATFORM_HEIGHT / 2.0;
             let platform_left = platform_transform.translation.x - 100.0; // Platform width
             let platform_right = platform_transform.translation.x + 100.0;
-            
+
             // Check if player is on top of platform
-            if player_bottom <= platform_top && player_bottom >= platform_bottom &&
-               player_right >= platform_left && player_left <= platform_right &&
-               player.velocity.y <= 0.0 {
+            if player_bottom <= platform_top
+                && player_bottom >= platform_bottom
+                && player_right >= platform_left
+                && player_left <= platform_right
+                && player.velocity.y <= 0.0
+            {
                 on_platform = true;
                 break;
             }
         }
-        
+
         // Update grounded state (also check floor)
         if on_platform || player_transform.translation.y <= -200.0 {
             if !player.grounded && player.velocity.y <= 0.0 {
@@ -121,7 +128,7 @@ pub fn ground_detection_system(
 
 // ==== CUSTOM GAME SYSTEMS AREA - Add your game-specific systems here ====
 // Example: Add new gameplay systems, AI, scoring, etc.
-// 
+//
 // pub fn my_custom_system(
 //     // your queries and resources here
 // ) {

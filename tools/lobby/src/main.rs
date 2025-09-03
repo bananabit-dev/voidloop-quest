@@ -1,10 +1,13 @@
-use anyhow::{Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use edgegap_async::apis::{configuration::Configuration, lobbies_api};
 use edgegap_async::models::{LobbyCreatePayload, LobbyDeployPayload, LobbyTerminatePayload};
 
 #[derive(Parser, Debug)]
-#[command(name = "lobby", about = "Edgegap lobby helper using bevygap's async client")] 
+#[command(
+    name = "lobby",
+    about = "Edgegap lobby helper using bevygap's async client"
+)]
 struct Cli {
     /// Base URL for Edgegap API (e.g. https://api.edgegap.com)
     #[arg(long, env = "EDGEGAP_BASE_URL")]
