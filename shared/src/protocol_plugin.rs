@@ -63,6 +63,40 @@ impl Default for PlayerColor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Channel1;
 
+// Room management data structures
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RoomInfo {
+    pub room_id: String,
+    pub current_players: u32,
+    pub max_players: u32,
+    pub host_name: String,
+    pub game_mode: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct MatchmakingRequest {
+    pub player_id: String,
+    pub game_mode: String,
+}
+
+// Messages for room operations
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum RoomMessage {
+    CreateRoom { room_id: String, host_name: String, game_mode: String },
+    JoinRoom { room_id: String, player_name: String },
+    LeaveRoom { room_id: String, player_name: String },
+    ListRooms,
+    RoomList { rooms: Vec<RoomInfo> },
+    RoomCreated { room_info: RoomInfo },
+    RoomJoined { room_info: RoomInfo },
+    RoomLeft { room_id: String },
+    PlayerJoined { room_id: String, player_name: String, player_count: u32 },
+    PlayerLeft { room_id: String, player_name: String, player_count: u32 },
+    StartMatchmaking { game_mode: String },
+    MatchFound { room_info: RoomInfo },
+    RoomError { message: String },
+}
+
 // Protocol Plugin
 pub struct ProtocolPlugin;
 
@@ -83,7 +117,7 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<Platform>()
             .add_prediction(PredictionMode::Once);
         
-        // Register channel
+        // Register channel for room messages
         app.add_channel::<Channel1>(ChannelSettings {
             mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
             ..default()

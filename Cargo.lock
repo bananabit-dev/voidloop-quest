@@ -8357,6 +8357,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "shared",
+ "uuid",
  "vergen",
  "vergen-git2",
 ]
@@ -9599,6 +9600,7 @@ dependencies = [
  "edgegap_async",
  "leafwing-input-manager",
  "lightyear",
+ "rand 0.8.5",
  "serde",
  "shared",
  "tokio",
