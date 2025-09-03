@@ -1250,11 +1250,7 @@ fn handle_matchmaking_events(
                 // Generate unique lobby name using random ID (WASM-compatible)
                 let mut rng = rand::thread_rng();
                 let random_id = rng.gen_range(10000..99999);
-                let lobby_name = format!(
-                    "voidloop-{}-{}",
-                    selected_mode,
-                    random_id
-                );
+                let lobby_name = format!("voidloop-{}-{}", selected_mode, random_id);
 
                 info!("🔧 Creating Edgegap lobby: {}", lobby_name);
 

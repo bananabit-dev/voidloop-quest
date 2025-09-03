@@ -2,3 +2,7 @@
 out
 .DS_Store
 .env
+
+# WASM build artifacts
+client/www/voidloop-quest.js
+client/www/voidloop-quest_bg.wasm
