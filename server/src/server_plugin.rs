@@ -13,13 +13,15 @@ pub struct ServerPlugin;
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
         // Minimal Bevy plugins for server
-        app.add_plugins(MinimalPlugins);
-        app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
+        app.add_plugins(MinimalPlugins.set(bevy::app::ScheduleRunnerPlugin::run_loop(
             std::time::Duration::from_secs_f32(1.0 / 60.0), // 60 FPS server tick rate
-        ));
+        )));
         
-        // Input plugin
+        // Add input plugin for shared systems that need it
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
+        
+        // Add mouse button input resource that the input manager expects
+        app.init_resource::<bevy::input::ButtonInput<bevy::input::mouse::MouseButton>>>();
         
         // Networking
         #[cfg(feature = "bevygap")]
