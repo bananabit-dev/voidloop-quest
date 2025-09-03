@@ -12,6 +12,11 @@ use tokio::runtime::Runtime;
 use shared::{RoomInfo};
 
 #[derive(Resource, Default)]
+pub struct ClientRoomRegistry {
+    pub rooms: Vec<RoomInfo>,
+}
+
+#[derive(Resource, Default)]
 pub struct ConnectionState {
     // Reserved for future connection state tracking
 }
@@ -117,6 +122,7 @@ pub enum LobbyEvent {
     StartLocalGame,
     SelectMode(String),
     CreateRoom,
+    ConfirmCreateRoom,
     JoinRoom,
     EnterRoomId(String),
     LeaveRoom,
@@ -141,6 +147,7 @@ impl Plugin for LobbyPlugin {
             .insert_resource(LobbyConfig::default())
             .insert_resource(ConnectionState::default())
             .insert_resource(EdgegapLobbyState::default())
+            .insert_resource(ClientRoomRegistry::default())
             .add_systems(OnEnter(AppState::Lobby), setup_lobby_ui)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby_ui)
             .add_systems(
@@ -706,21 +713,7 @@ fn handle_lobby_input(
                         *color = BackgroundColor(Color::srgb(0.5, 0.3, 0.1));
                         
                     } else if confirm_create.is_some() {
-                        if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
-                            // Generate room ID and create room locally for now
-                            use std::collections::hash_map::DefaultHasher;
-                            use std::hash::{Hash, Hasher};
-                            let mut hasher = DefaultHasher::new();
-                            std::ptr::addr_of!(lobby_ui).hash(&mut hasher);
-                            let room_num = (hasher.finish() % 999) + 1;
-                            let room_id = format!("ROOM{:03}", room_num);
-                            
-                            lobby_ui.room_id = room_id;
-                            lobby_ui.is_host = true;
-                            lobby_ui.lobby_mode = LobbyMode::InRoom;
-                            lobby_ui.is_searching = false;
-                            info!("🏠 Created room: {}", lobby_ui.room_id);
-                        }
+                        lobby_events.write(LobbyEvent::ConfirmCreateRoom);
                         *color = BackgroundColor(Color::srgb(0.1, 0.5, 0.1));
                         
                     } else if confirm_join.is_some() {
@@ -826,6 +819,7 @@ fn handle_lobby_events(
     mut lobby_events: EventReader<LobbyEvent>,
     mut lobby_ui_query: Query<&mut LobbyUI>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut room_registry: ResMut<ClientRoomRegistry>,
 ) {
     let mut lobby_ui = if let Ok(ui) = lobby_ui_query.single_mut() {
         ui
@@ -865,16 +859,63 @@ fn handle_lobby_events(
                 lobby_ui.lobby_mode = LobbyMode::CreateRoom;
                 info!("🏠 Switching to create room mode");
             },
+            LobbyEvent::ConfirmCreateRoom => {
+                // Generate room ID using current time for uniqueness
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let room_num = (timestamp % 999) + 1;
+                let room_id = format!("ROOM{:03}", room_num);
+                
+                // Create room info and add to registry
+                let room_info = RoomInfo {
+                    room_id: room_id.clone(),
+                    current_players: 1,
+                    max_players: 4,
+                    host_name: lobby_ui.player_name.clone(),
+                    game_mode: lobby_ui.selected_mode.clone(),
+                };
+                
+                room_registry.rooms.push(room_info);
+                
+                lobby_ui.room_id = room_id;
+                lobby_ui.is_host = true;
+                lobby_ui.lobby_mode = LobbyMode::InRoom;
+                lobby_ui.is_searching = false;
+                info!("🏠 Created room: {}", lobby_ui.room_id);
+            },
             LobbyEvent::JoinRoom => {
                 lobby_ui.lobby_mode = LobbyMode::JoinRoom;
                 info!("🚪 Switching to join room mode");
             },
             LobbyEvent::RequestRoomList => {
                 info!("📋 Requesting room list from server...");
-                // For now, since we don't have networking fully integrated,
-                // simulate an empty room list response
-                // TODO: Replace with actual network request when server integration is complete
-                lobby_ui.available_rooms = Vec::new();
+                // Combine registry rooms with some default rooms for testing
+                let mut available_rooms = room_registry.rooms.clone();
+                
+                // Add some default test rooms if the registry is empty
+                if available_rooms.is_empty() {
+                    available_rooms = vec![
+                        RoomInfo {
+                            room_id: "ROOM001".to_string(),
+                            current_players: 2,
+                            max_players: 4,
+                            host_name: "Player1".to_string(),
+                            game_mode: "casual".to_string(),
+                        },
+                        RoomInfo {
+                            room_id: "ROOM002".to_string(),
+                            current_players: 1,
+                            max_players: 4,
+                            host_name: "Player2".to_string(),
+                            game_mode: "ranked".to_string(),
+                        },
+                    ];
+                }
+                
+                lobby_ui.available_rooms = available_rooms;
                 lobby_ui.lobby_mode = LobbyMode::JoinRoom;
             },
             LobbyEvent::RoomListReceived(rooms) => {
