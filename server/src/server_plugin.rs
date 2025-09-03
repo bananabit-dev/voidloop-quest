@@ -6,20 +6,22 @@ use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
 use std::collections::HashMap;
 
-use shared::{Player, PlayerActions, PlayerColor, PlayerTransform, Platform, SharedPlugin, RoomInfo};
+use shared::{Player, PlayerActions, Platform, SharedPlugin, RoomInfo};
 
 pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
         // Minimal Bevy plugins for server
-        app.add_plugins(MinimalPlugins);
-        app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
+        app.add_plugins(MinimalPlugins.set(bevy::app::ScheduleRunnerPlugin::run_loop(
             std::time::Duration::from_secs_f32(1.0 / 60.0), // 60 FPS server tick rate
-        ));
+        )));
         
-        // Input plugin
+        // Add input plugin for shared systems that need it
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
+        
+        // Add mouse button input resource that the input manager expects
+        app.init_resource::<bevy::input::ButtonInput<bevy::input::mouse::MouseButton>>>();
         
         // Networking
         #[cfg(feature = "bevygap")]
@@ -51,7 +53,7 @@ impl Plugin for ServerPlugin {
 fn setup_world(mut commands: Commands) {
     info!("Setting up game world...");
     
-    // Spawn platforms (these will be replicated to clients)
+    // Spawn platforms (these will be replicated to clients in networked mode)
     let platform_positions = vec![
         Vec3::new(-200.0, -100.0, 0.0),
         Vec3::new(0.0, 0.0, 0.0),
@@ -61,11 +63,21 @@ fn setup_world(mut commands: Commands) {
     ];
     
     for pos in platform_positions {
-        commands.spawn((
-            Platform,
-            Transform::from_translation(pos),
-            Replicate::default(),
-        ));
+        #[cfg(feature = "bevygap")]
+        {
+            commands.spawn((
+                Platform,
+                Transform::from_translation(pos),
+                Replicate::default(),
+            ));
+        }
+        #[cfg(not(feature = "bevygap"))]
+        {
+            commands.spawn((
+                Platform,
+                Transform::from_translation(pos),
+            ));
+        }
     }
     
     info!("World setup complete with {} platforms", 5);
@@ -73,30 +85,17 @@ fn setup_world(mut commands: Commands) {
 
 // Player management system that handles room logic
 fn handle_player_management(
-    mut commands: Commands,
+    _commands: Commands,
     // For now, we'll manually spawn a test player to verify the game works
     // In production, bevygap will handle player connections automatically
-    existing_players: Query<Entity, With<Player>>,
+    _existing_players: Query<Entity, With<Player>>,
 ) {
-    // Spawn a test player if none exist (for testing without actual networking)
-    if existing_players.is_empty() {
-        info!("No players found - spawning test player for local game");
-        
-        let spawn_pos = Vec3::new(0.0, 100.0, 0.0);
-        let color = Color::srgb(0.5, 0.8, 1.0);
-        
-        commands.spawn((
-            Player::default(),
-            PlayerTransform {
-                translation: spawn_pos,
-            },
-            PlayerColor { color },
-            InputMap::<PlayerActions>::default(),
-            ActionState::<PlayerActions>::default(),
-            Replicate::default(),
-        ));
-        
-        info!("Spawned test player at position {:?}", spawn_pos);
+    // Only spawn a test player if none exist and we're not using networking
+    // This helps with local development
+    #[cfg(not(feature = "bevygap"))]
+    {
+        // Note: Player spawning is now handled client-side for better local development experience
+        // Server-side player spawning will be re-enabled when proper networking is integrated
     }
 }
 

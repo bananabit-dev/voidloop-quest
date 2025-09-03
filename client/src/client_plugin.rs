@@ -50,7 +50,7 @@ impl Plugin for ClientPlugin {
         app.add_systems(Startup, setup_camera);
         
         // Game setup systems (only run when in game)
-        app.add_systems(OnEnter(AppState::InGame), setup_game);
+        app.add_systems(OnEnter(AppState::InGame), (setup_game, spawn_local_player));
         app.add_systems(Update, (
             spawn_player_visual,
             spawn_platform_visual,
@@ -105,6 +105,32 @@ fn setup_camera(mut commands: Commands) {
 fn setup_game(mut commands: Commands) {
     // Spawn some platforms for the level (only when entering game)
     spawn_platforms(&mut commands);
+}
+
+fn spawn_local_player(mut commands: Commands) {
+    info!("🎮 Spawning local player for game...");
+    
+    let spawn_pos = Vec3::new(0.0, 100.0, 0.0);
+    let color = Color::srgb(0.2, 0.8, 0.2); // Green for local player
+    
+    commands.spawn((
+        Player::default(),
+        PlayerTransform {
+            translation: spawn_pos,
+        },
+        PlayerColor { color },
+        InputMap::<PlayerActions>::default()
+            .with(PlayerActions::MoveLeft, KeyCode::KeyA)
+            .with(PlayerActions::MoveLeft, KeyCode::ArrowLeft)
+            .with(PlayerActions::MoveRight, KeyCode::KeyD)
+            .with(PlayerActions::MoveRight, KeyCode::ArrowRight)
+            .with(PlayerActions::Jump, KeyCode::Space)
+            .with(PlayerActions::Jump, KeyCode::KeyW)
+            .with(PlayerActions::Jump, KeyCode::ArrowUp),
+        ActionState::<PlayerActions>::default(),
+    ));
+    
+    info!("✅ Local player spawned at position {:?} with controls: A/D or Arrow keys to move, Space/W/Up to jump", spawn_pos);
 }
 
 fn spawn_platforms(commands: &mut Commands) {
