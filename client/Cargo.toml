@@ -22,7 +22,7 @@ bevy = {workspace = true, features = [
   "bevy_text",
   "bevy_ui"
 ]}
-shared = {path = "../shared"}
+shared = {path = "../shared", features = ["bevygui"]}
 lightyear.workspace = true
 avian2d.workspace = true
 serde.workspace = true
@@ -31,9 +31,24 @@ bevygap_client_plugin = {workspace = true, optional = true}
 edgegap_async = { git = "https://github.com/bananabit-dev/bevygap.git", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
 
-# on wasm, we need web-sys too:
+# on wasm, we need web-sys too and WebGL2 features:
 [target."cfg(target_family = \"wasm\")".dependencies]
 web-sys = { version = "0.3", features = ["Window", "Location"] }
+
+[target."cfg(target_family = \"wasm\")".dependencies.bevy]
+workspace = true
+features = [
+  "bevy_asset",
+  "bevy_state", 
+  "bevy_color",
+  "bevy_winit",
+  "bevy_sprite",
+  "bevy_text",
+  "bevy_ui",
+  "bevy_render",
+  "bevy_core_pipeline",
+  "webgl2"
+]
 
 [lints]
 workspace = true
