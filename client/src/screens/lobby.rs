@@ -680,10 +680,9 @@ fn handle_lobby_input(
                         
                     } else if quick_match_btn.is_some() {
                         info!("🎯 Starting quick match...");
-                        // For now, simulate finding a match quickly
+                        // Trigger real BevyGap matchmaking via StartMatchmaking event
                         if let Ok(mut lobby_ui) = lobby_ui_query.single_mut() {
                             lobby_ui.is_searching = true;
-                            // TODO: Add real matchmaking integration
                         }
                         lobby_events.write(LobbyEvent::StartMatchmaking);
                         *color = BackgroundColor(Color::srgb(0.5, 0.1, 0.5));
