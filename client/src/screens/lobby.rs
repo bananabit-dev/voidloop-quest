@@ -1185,7 +1185,7 @@ fn handle_lobby_events(
                 info!("🏠 Switching to create room mode");
             }
             LobbyEvent::ConfirmCreateRoom => {
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(all(target_arch = "wasm32", feature = "bevygap"))]
                 {
                     let player_name = lobby_ui.player_name.clone();
                     let game_mode = lobby_ui.selected_mode.clone();
@@ -1223,6 +1223,26 @@ fn handle_lobby_events(
                         }
                     });
                 }
+                #[cfg(all(target_arch = "wasm32", not(feature = "bevygap")))]
+                {
+                    // Fallback for WASM builds without bevygap - create local room
+                    let mut rng = rand::thread_rng();
+                    let room_num = rng.gen_range(1..=999);
+                    let room_id = format!("ROOM{:03}", room_num);
+                    let room_info = RoomInfo {
+                        room_id: room_id.clone(),
+                        current_players: 1,
+                        max_players: 4,
+                        host_name: lobby_ui.player_name.clone(),
+                        game_mode: lobby_ui.selected_mode.clone(),
+                    };
+                    room_registry.rooms.push(room_info);
+                    lobby_ui.room_id = room_id;
+                    lobby_ui.is_host = true;
+                    lobby_ui.lobby_mode = LobbyMode::InRoom;
+                    lobby_ui.is_searching = false;
+                    info!("🏠 Created local room: {} (bevygap disabled)", lobby_ui.room_id);
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     // Keep local fallback for native
@@ -1250,7 +1270,7 @@ fn handle_lobby_events(
             }
             LobbyEvent::RequestRoomList => {
                 info!("📋 Requesting room list from server...");
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(all(target_arch = "wasm32", feature = "bevygap"))]
                 {
                     spawn_local(async move {
                         let url = format!("{}/lobby/api/rooms", http_base());
@@ -1283,6 +1303,12 @@ fn handle_lobby_events(
                             }
                         }
                     });
+                }
+                #[cfg(all(target_arch = "wasm32", not(feature = "bevygap")))]
+                {
+                    // Fallback for WASM builds without bevygap - use local room registry
+                    lobby_ui.available_rooms = room_registry.rooms.clone();
+                    info!("📋 Loaded {} local rooms (bevygap disabled)", lobby_ui.available_rooms.len());
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -1323,7 +1349,7 @@ fn handle_lobby_events(
                 info!("🔤 Entered room ID: {}", room_id);
             }
             LobbyEvent::LeaveRoom => {
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(all(target_arch = "wasm32", feature = "bevygap"))]
                 {
                     if !lobby_ui.room_id.is_empty() {
                         let room_id = lobby_ui.room_id.clone();
@@ -1344,6 +1370,11 @@ fn handle_lobby_events(
                             }
                         });
                     }
+                }
+                #[cfg(all(target_arch = "wasm32", not(feature = "bevygap")))]
+                {
+                    // Fallback for WASM builds without bevygap - just reset UI locally
+                    info!("🚪 Left local room: {} (bevygap disabled)", lobby_ui.room_id);
                 }
                 // Reset UI locally
                 lobby_ui.lobby_mode = LobbyMode::Main;
