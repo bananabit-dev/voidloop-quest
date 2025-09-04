@@ -1224,7 +1224,6 @@ struct BackButton;
 #[cfg(feature = "bevygap")]
 fn handle_matchmaking_events(
     mut lobby_events: EventReader<LobbyEvent>,
-    mut lobby_events_writer: EventWriter<LobbyEvent>,
     mut commands: Commands,
     lobby_config: Res<LobbyConfig>,
     mut lobby_state: ResMut<EdgegapLobbyState>,
@@ -1236,12 +1235,13 @@ fn handle_matchmaking_events(
                 let api_token = if let Some(token) = &lobby_config.edgegap_token {
                     token.clone()
                 } else {
+                    let error_msg = "EDGEGAP_TOKEN not configured".to_string();
                     error!(
                         "🚫 EDGEGAP_TOKEN not configured! Set environment variable EDGEGAP_TOKEN"
                     );
-                    lobby_events_writer.write(LobbyEvent::LobbyDeploymentFailed(
-                        "EDGEGAP_TOKEN not configured".to_string(),
-                    ));
+                    commands.queue(move |world: &mut World| {
+                        world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg));
+                    });
                     return;
                 };
 
@@ -1279,7 +1279,6 @@ fn handle_matchmaking_events(
                     handle_lobby_creation_result(
                         create_result,
                         &mut lobby_state,
-                        &mut lobby_events_writer,
                         &mut commands,
                     );
                 }
@@ -1364,7 +1363,6 @@ async fn create_and_deploy_lobby(
 fn handle_lobby_creation_result(
     create_result: Result<(String, LobbyReadResponse), String>,
     lobby_state: &mut ResMut<EdgegapLobbyState>,
-    lobby_events_writer: &mut EventWriter<LobbyEvent>,
     commands: &mut Commands,
 ) {
     match create_result {
@@ -1373,21 +1371,25 @@ fn handle_lobby_creation_result(
             lobby_state.lobby_response = Some(deploy_response.clone());
             lobby_state.is_deploying = false;
 
-            lobby_events_writer.write(LobbyEvent::LobbyCreated(created_name));
-            lobby_events_writer.write(LobbyEvent::LobbyDeployed(deploy_response));
+            let created_name_clone = created_name.clone();
+            let deploy_response_clone = deploy_response.clone();
+            commands.queue(move |world: &mut World| {
+                world.send_event(LobbyEvent::LobbyCreated(created_name_clone));
+                world.send_event(LobbyEvent::LobbyDeployed(deploy_response_clone));
+                world.send_event(LobbyEvent::ConnectedToServer);
+            });
 
             // Now attempt to connect via BevyGap
             info!("🔗 Attempting BevyGap connection...");
             commands.bevygap_connect_client();
-
-            // Send connection success after a brief delay (in real implementation,
-            // this would listen for actual BevyGap connection events)
-            lobby_events_writer.write(LobbyEvent::ConnectedToServer);
         }
         Err(error_msg) => {
             lobby_state.deployment_error = Some(error_msg.clone());
             lobby_state.is_deploying = false;
-            lobby_events_writer.write(LobbyEvent::LobbyDeploymentFailed(error_msg));
+            let error_msg_clone = error_msg.clone();
+            commands.queue(move |world: &mut World| {
+                world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg_clone));
+            });
         }
     }
 }
