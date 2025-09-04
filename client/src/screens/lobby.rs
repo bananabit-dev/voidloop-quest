@@ -8,13 +8,20 @@ use bevygap_client_plugin::prelude::{BevygapConnectExt, BevygapClientState};
 use shared::RoomInfo;
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
-use web_sys::{RequestInit, RequestMode};
-use std::cell::RefCell;
-use std::rc::Rc;
+use {
+    wasm_bindgen_futures::spawn_local,
+    wasm_bindgen::JsCast,
+    web_sys::{RequestInit, RequestMode},
+    std::cell::RefCell,
+    std::rc::Rc,
+};
+// Placeholder EdgegapLobbyState for compilation
+#[derive(Resource, Default)]
+pub struct EdgegapLobbyState {
+    pub is_deploying: bool,
+    pub lobby_name: Option<String>,
+    pub deployment_error: Option<String>,
+}
 
 #[derive(Resource, Default)]
 pub struct ClientRoomRegistry {
@@ -26,8 +33,6 @@ pub struct ConnectionState {
     // Reserved for future connection state tracking
 }
 
-#[derive(Resource, Clone, Debug)]
-pub struct LobbyConfig {
 #[cfg(target_arch = "wasm32")]
 thread_local! {
     static PENDING_ROOM_CREATED: RefCell<Option<RoomInfo>> = RefCell::new(None);
@@ -41,6 +46,8 @@ pub struct UiNotice { pub msg: Option<String>, pub timer: f32 }
 #[derive(Component)]
 struct NoticeText;
 
+#[derive(Resource, Clone, Debug)]
+pub struct LobbyConfig {
     pub domain: String,           // "voidloop.quest"
     pub matchmaker_url: String,   // "wss://voidloop.quest/matchmaker/ws"
     pub max_players: u32,         // 4
@@ -108,9 +115,6 @@ pub enum AppState {
     InGame,
 }
 
-// 🌟 Lobby events
-#[derive(Event)]
-pub enum LobbyEvent {
 // Helper: server-side lobby room representation from bevygap httpd
 #[derive(Deserialize, Debug, Clone)]
 #[cfg(target_arch = "wasm32")]
@@ -124,78 +128,14 @@ struct ServerLobbyRoom {
     max_players: u32,
 }
 
+// 🌟 Lobby events
+#[derive(Event)]
+pub enum LobbyEvent {
     PlayerJoined(u32),
     PlayerLeft(u32),
     StartGame,
     StartLocalGame,
     SelectMode(String),
-            LobbyEvent::StartGame => {
-                // Host starts room: ask server to mark room started; on success, begin matchmaking
-                #[cfg(target_arch = "wasm32")]
-                {
-                    if lobby_ui.room_id.is_empty() {
-                        web_sys::console::warn_1(&"No room id to start".into());
-                    } else {
-                        let room_id = lobby_ui.room_id.clone();
-                        spawn_local(async move {
-                            let url = format!("{}/lobby/api/rooms/{}/start", http_base(), room_id);
-                            match fetch_json(&url, "POST", None).await {
-                                Ok(resp) => {
-                                    let resp: web_sys::Response = resp.dyn_into().unwrap();
-                                    if !resp.ok() {
-                                        web_sys::console::error_1(&format!("Failed to start room, status {}", resp.status()).into());
-                                    }
-                                }
-                                Err(e) => web_sys::console::error_1(&e),
-                            }
-                        });
-                        // Immediately trigger BevyGap matchmaking; server will spin up via Edgegap
-                        commands.bevygap_connect_client();
-                        lobby_ui.is_searching = true;
-                    }
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-            .insert_resource(UiNotice::default())
-            .add_systems(Update, (pump_async_results, show_notice).run_if(in_state(AppState::Lobby)))
-
-                    // Native: just begin matchmaking
-                    commands.bevygap_connect_client();
-                    lobby_ui.is_searching = true;
-                }
-            }
-            LobbyEvent::LeaveRoom => {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    if !lobby_ui.room_id.is_empty() {
-                        let room_id = lobby_ui.room_id.clone();
-                        let player_name = lobby_ui.player_name.clone();
-                        spawn_local(async move {
-                            let url = format!("{}/lobby/api/rooms/{}/leave", http_base(), room_id);
-                            #[derive(Serialize)]
-                            struct LeaveReq<'a> { player_name: &'a str }
-                            let body = serde_json::to_string(&LeaveReq { player_name: &player_name }).unwrap();
-                            match fetch_json(&url, "POST", Some(body)).await {
-                                Ok(resp) => {
-                                    let resp: web_sys::Response = resp.dyn_into().unwrap();
-                                    if !resp.ok() {
-                                        web_sys::console::error_1(&format!("Failed to leave room, status {}", resp.status()).into());
-                                    }
-                                }
-                                Err(e) => web_sys::console::error_1(&e),
-                            }
-                        });
-                    }
-                }
-                // Reset UI locally
-                lobby_ui.lobby_mode = LobbyMode::Main;
-                lobby_ui.room_id.clear();
-                lobby_ui.is_host = false;
-                lobby_ui.current_players = 1;
-                lobby_ui.is_searching = false;
-                info!("👋 Left room, returning to main lobby");
-            }
-
     CreateRoom,
     ConfirmCreateRoom,
     JoinRoom,
@@ -206,8 +146,6 @@ struct ServerLobbyRoom {
     RequestRoomList,
     RoomListReceived(Vec<RoomInfo>),
     LobbyCreated(String), // lobby name
-    #[cfg(feature = "bevygap")]
-    LobbyDeployed(LobbyReadResponse),
     LobbyDeploymentFailed(String),
     ConnectedToServer,
 }
@@ -218,6 +156,31 @@ pub struct LobbyPlugin;
 impl Plugin for LobbyPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<AppState>()
+            .add_event::<LobbyEvent>()
+            .insert_resource(LobbyConfig::default())
+            .insert_resource(ConnectionState::default())
+            .insert_resource(EdgegapLobbyState::default())
+            .insert_resource(ClientRoomRegistry::default())
+            .insert_resource(UiNotice::default())
+            .add_systems(OnEnter(AppState::Lobby), setup_lobby_ui)
+            .add_systems(OnExit(AppState::Lobby), cleanup_lobby_ui)
+            .add_systems(
+                Update,
+                (
+                    handle_lobby_input,
+                    update_lobby_display,
+                    update_simple_ui,
+                    handle_lobby_events,
+                    handle_connection_events,
+                    show_notice,
+                    #[cfg(target_arch = "wasm32")]
+                    pump_async_results,
+                )
+                    .run_if(in_state(AppState::Lobby)),
+            );
+    }
+}
+
 fn show_notice(
     mut cmds: Commands,
     mut notice: ResMut<UiNotice>,
@@ -255,11 +218,11 @@ fn show_notice(
     }
     if let Some(msg) = &notice.msg {
         if notice.timer > 0.0 {
-            notice.timer -= time.delta_seconds();
+            notice.timer -= time.delta_secs();
         } else {
             notice.msg = None;
             for e in q_text.iter_mut() {
-                cmds.entity(e).despawn_recursive();
+                cmds.entity(e).despawn();
             }
         }
     }
@@ -331,26 +294,7 @@ fn fetch_json(url: &str, method: &str, body: Option<String>) -> wasm_bindgen_fut
     wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
 }
 
-            .add_event::<LobbyEvent>()
-            .insert_resource(LobbyConfig::default())
-            .insert_resource(ConnectionState::default())
-            .insert_resource(EdgegapLobbyState::default())
-            .insert_resource(ClientRoomRegistry::default())
-            .add_systems(OnEnter(AppState::Lobby), setup_lobby_ui)
-            .add_systems(OnExit(AppState::Lobby), cleanup_lobby_ui)
-            .add_systems(
-                Update,
-                (
-                    handle_lobby_input,
-                    update_lobby_display,
-                    update_simple_ui,
-                    handle_lobby_events,
-                    handle_connection_events,
-                )
-                    .run_if(in_state(AppState::Lobby)),
-            );
-    }
-}
+
 
 // 🏠 Initialize lobby system
 fn setup_lobby_ui(mut commands: Commands, _asset_server: Res<AssetServer>) {
@@ -1159,51 +1103,6 @@ fn handle_lobby_input(
                     }
                 }
             }
-            LobbyEvent::RequestRoomList => {
-                info!("📋 Requesting room list from server...");
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let mut ui_ptr = lobby_ui.clone();
-                    // fire async fetch to /lobby/api/rooms
-                    spawn_local(async move {
-                        let url = format!("{}/lobby/api/rooms", http_base());
-                        match fetch_json(&url, "GET", None).await {
-                            Ok(resp) => {
-                                let resp: web_sys::Response = resp.dyn_into().unwrap();
-                                match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap()).await {
-                                    Ok(js) => {
-                                        let rooms: Vec<ServerLobbyRoom> = serde_wasm_bindgen::from_value(js).unwrap_or_default();
-                                        let list: Vec<RoomInfo> = rooms
-                                            .into_iter()
-                                            .filter(|r| !r.started)
-                                            .map(|r| RoomInfo { room_id: r.id, current_players: r.current_players, max_players: r.max_players, host_name: r.host_name, game_mode: r.game_mode })
-                                            .collect();
-                                        PENDING_ROOM_LIST.with(|cell| cell.replace(Some(list)));
-                                    }
-                                    Err(e) => {
-                                        PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed loading rooms: {e:?}"))));
-                                    }
-                                }
-                            }
-                            Err(e) => PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed http rooms: {e:?}")))),
-                        }
-                    });
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    // Native fallback - still use local registry
-                    let mut available_rooms = room_registry.rooms.clone();
-                    if available_rooms.is_empty() {
-                        available_rooms = vec![
-                            RoomInfo { room_id: "ROOM001".into(), current_players: 2, max_players: 4, host_name: "Player1".into(), game_mode: "casual".into() },
-                            RoomInfo { room_id: "ROOM002".into(), current_players: 1, max_players: 4, host_name: "Player2".into(), game_mode: "ranked".into() },
-                        ];
-                    }
-                    lobby_ui.available_rooms = available_rooms;
-                    lobby_ui.lobby_mode = LobbyMode::JoinRoom;
-                }
-            }
-
         }
     }
 }
@@ -1228,10 +1127,6 @@ fn handle_lobby_events(
     mut next_state: ResMut<NextState<AppState>>,
     mut room_registry: ResMut<ClientRoomRegistry>,
     mut commands: Commands,
-    #[cfg(feature = "bevygap")]
-    lobby_config: Option<Res<LobbyConfig>>,
-    #[cfg(feature = "bevygap")]
-    mut lobby_state: Option<ResMut<EdgegapLobbyState>>,
 ) {
     let mut lobby_ui = if let Ok(ui) = lobby_ui_query.single_mut() {
         ui
@@ -1267,94 +1162,15 @@ fn handle_lobby_events(
                 info!("🔍 Starting matchmaking...");
                 lobby_ui.is_searching = true;
                 
-                // Handle real BevyGap matchmaking inline
+                // Simplified matchmaking - just trigger bevygap connection
                 #[cfg(feature = "bevygap")]
                 {
-                    // Get required resources for matchmaking
-                    if let (Some(lobby_config), Some(mut lobby_state)) = (lobby_config.as_deref(), lobby_state.as_mut()) {
-                        let api_token = if let Some(token) = &lobby_config.edgegap_token {
-                            token.clone()
-                        } else {
-                            let error_msg = "EDGEGAP_TOKEN not configured".to_string();
-                            error!(
-                                "🚫 EDGEGAP_TOKEN not configured! Set environment variable EDGEGAP_TOKEN"
-                            );
-                            // Send error event for next frame
-                            commands.queue(move |world: &mut World| {
-                                world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg));
-                            });
-                            return;
-                        };
-
-                        let base_url = lobby_config.edgegap_api_url.clone();
-                        let selected_mode = lobby_ui.selected_mode.clone();
-
-                        // Generate unique lobby name using random ID (WASM-compatible)
-                        let mut rng = rand::thread_rng();
-                        let random_id = rng.gen_range(10000..99999);
-                        let lobby_name = format!(
-                            "voidloop-{}-{}",
-                            selected_mode,
-                            random_id
-                        );
-
-                        info!("🔧 Creating Edgegap lobby: {}", lobby_name);
-
-                        // Configure Edgegap API client
-                        let mut cfg = Configuration::default();
-                        cfg.base_path = base_url;
-                        cfg.api_key = Some(edgegap_async::apis::configuration::ApiKey {
-                            prefix: Some("Bearer".into()),
-                            key: api_token,
-                        });
-
-                        // Handle async operations differently for native vs WASM
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            let runtime = tokio::runtime::Runtime::new().unwrap();
-                            let lobby_name_clone = lobby_name.clone();
-                            let create_result = runtime.block_on(async {
-                                create_and_deploy_lobby(&cfg, lobby_name_clone).await
-                            });
-
-                            handle_lobby_creation_result(
-                                create_result,
-                                &mut lobby_state,
-                                &mut commands,
-                            );
-                        }
-
-                        #[cfg(target_arch = "wasm32")]
-                        {
-                            // For WASM, spawn the async task without blocking
-                            let lobby_name_clone = lobby_name.clone();
-                            
-                            // Note: In WASM, we can't directly write to the event writer from the async context
-                            // This is a limitation - in a real implementation, you'd need to use channels or
-                            // a different architecture to communicate results back to the Bevy system
-                            spawn_local(async move {
-                                let result = create_and_deploy_lobby(&cfg, lobby_name_clone).await;
-                                
-                                // Log the result - in a real implementation, you'd send this through a channel
-                                // or use a different mechanism to communicate back to the Bevy system
-                                match result {
-                                    Ok((created_name, deploy_response)) => {
-                                        info!("✅ WASM: Lobby created and deployed: {}", created_name);
-                                        info!("📍 WASM: Server URL: {}", deploy_response.url);
-                                        // TODO: Send success event back to Bevy system
-                                    }
-                                    Err(error_msg) => {
-                                        error!("❌ WASM: Failed to create/deploy lobby: {}", error_msg);
-                                        // TODO: Send error event back to Bevy system
-                                    }
-                                }
-                            });
-
-                            // For now, immediately set state to indicate we started the process
-                            lobby_state.is_deploying = true;
-                            info!("🔄 WASM: Lobby creation started in background...");
-                        }
-                    }
+                    commands.bevygap_connect_client();
+                }
+                #[cfg(not(feature = "bevygap"))]
+                {
+                    // For local development without bevygap, just start the game
+                    next_state.set(AppState::InGame);
                 }
             }
             LobbyEvent::StartLocalGame => {
@@ -1391,6 +1207,15 @@ fn handle_lobby_events(
                                     Ok(js) => {
                                         let room: ServerLobbyRoom = serde_wasm_bindgen::from_value(js).unwrap();
                                         web_sys::console::log_1(&format!("Room created {}", room.id).into());
+                                        PENDING_ROOM_CREATED.with(|cell| {
+                                            cell.replace(Some(RoomInfo {
+                                                room_id: room.id,
+                                                current_players: room.current_players,
+                                                max_players: room.max_players,
+                                                host_name: room.host_name,
+                                                game_mode: room.game_mode,
+                                            }));
+                                        });
                                     }
                                     Err(e) => web_sys::console::error_1(&e),
                                 }
@@ -1426,31 +1251,66 @@ fn handle_lobby_events(
             }
             LobbyEvent::RequestRoomList => {
                 info!("📋 Requesting room list from server...");
-                // Combine registry rooms with some default rooms for testing
-                let mut available_rooms = room_registry.rooms.clone();
-
-                // Add some default test rooms if the registry is empty
-                if available_rooms.is_empty() {
-                    available_rooms = vec![
-                        RoomInfo {
-                            room_id: "ROOM001".to_string(),
-                            current_players: 2,
-                            max_players: 4,
-                            host_name: "Player1".to_string(),
-                            game_mode: "casual".to_string(),
-                        },
-                        RoomInfo {
-                            room_id: "ROOM002".to_string(),
-                            current_players: 1,
-                            max_players: 4,
-                            host_name: "Player2".to_string(),
-                            game_mode: "ranked".to_string(),
-                        },
-                    ];
+                #[cfg(target_arch = "wasm32")]
+                {
+                    spawn_local(async move {
+                        let url = format!("{}/lobby/api/rooms", http_base());
+                        match fetch_json(&url, "GET", None).await {
+                            Ok(resp) => {
+                                let resp: web_sys::Response = resp.dyn_into().unwrap();
+                                match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap()).await {
+                                    Ok(js) => {
+                                        let rooms: Vec<ServerLobbyRoom> = serde_wasm_bindgen::from_value(js).unwrap_or_default();
+                                        let list: Vec<RoomInfo> = rooms
+                                            .into_iter()
+                                            .filter(|r| !r.started)
+                                            .map(|r| RoomInfo { 
+                                                room_id: r.id, 
+                                                current_players: r.current_players, 
+                                                max_players: r.max_players, 
+                                                host_name: r.host_name, 
+                                                game_mode: r.game_mode 
+                                            })
+                                            .collect();
+                                        PENDING_ROOM_LIST.with(|cell| cell.replace(Some(list)));
+                                    }
+                                    Err(e) => {
+                                        PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed loading rooms: {e:?}"))));
+                                    }
+                                }
+                            }
+                            Err(e) => PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed http rooms: {e:?}")))),
+                        }
+                    });
                 }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // Combine registry rooms with some default rooms for testing
+                    let mut available_rooms = room_registry.rooms.clone();
 
-                lobby_ui.available_rooms = available_rooms;
-                lobby_ui.lobby_mode = LobbyMode::JoinRoom;
+                    // Add some default test rooms if the registry is empty
+                    if available_rooms.is_empty() {
+                        available_rooms = vec![
+                            RoomInfo {
+                                room_id: "ROOM001".to_string(),
+                                current_players: 2,
+                                max_players: 4,
+                                host_name: "Player1".to_string(),
+                                game_mode: "casual".to_string(),
+                            },
+                            RoomInfo {
+                                room_id: "ROOM002".to_string(),
+                                current_players: 1,
+                                max_players: 4,
+                                host_name: "Player2".to_string(),
+                                game_mode: "ranked".to_string(),
+                            },
+                        ];
+                    }
+
+                    lobby_ui.available_rooms = available_rooms;
+                    lobby_ui.lobby_mode = LobbyMode::JoinRoom;
+                }
             }
             LobbyEvent::RoomListReceived(rooms) => {
                 info!("📋 Received {} rooms from server", rooms.len());
@@ -1462,6 +1322,29 @@ fn handle_lobby_events(
                 info!("🔤 Entered room ID: {}", room_id);
             }
             LobbyEvent::LeaveRoom => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if !lobby_ui.room_id.is_empty() {
+                        let room_id = lobby_ui.room_id.clone();
+                        let player_name = lobby_ui.player_name.clone();
+                        spawn_local(async move {
+                            let url = format!("{}/lobby/api/rooms/{}/leave", http_base(), room_id);
+                            #[derive(Serialize)]
+                            struct LeaveReq<'a> { player_name: &'a str }
+                            let body = serde_json::to_string(&LeaveReq { player_name: &player_name }).unwrap();
+                            match fetch_json(&url, "POST", Some(body)).await {
+                                Ok(resp) => {
+                                    let resp: web_sys::Response = resp.dyn_into().unwrap();
+                                    if !resp.ok() {
+                                        web_sys::console::error_1(&format!("Failed to leave room, status {}", resp.status()).into());
+                                    }
+                                }
+                                Err(e) => web_sys::console::error_1(&e),
+                            }
+                        });
+                    }
+                }
+                // Reset UI locally
                 lobby_ui.lobby_mode = LobbyMode::Main;
                 lobby_ui.room_id.clear();
                 lobby_ui.is_host = false;
@@ -1472,15 +1355,6 @@ fn handle_lobby_events(
             LobbyEvent::LobbyCreated(lobby_name) => {
                 info!("🏠 Lobby created: {}", lobby_name);
                 // Continue showing searching status while deploying
-            }
-            #[cfg(feature = "bevygap")]
-            LobbyEvent::LobbyDeployed(lobby_response) => {
-                info!(
-                    "🚀 Lobby deployed successfully! Server URL: {}",
-                    lobby_response.url
-                );
-                lobby_ui.is_searching = false;
-                // Connection will be handled by BevyGap
             }
             LobbyEvent::LobbyDeploymentFailed(error) => {
                 error!("❌ Lobby deployment failed: {}", error);
@@ -1565,82 +1439,6 @@ struct LeaveRoomButton;
 
 #[derive(Component)]
 struct BackButton;
-
-// Helper function to handle the async lobby creation and deployment
-#[cfg(feature = "bevygap")]
-async fn create_and_deploy_lobby(
-    cfg: &Configuration,
-    lobby_name: String,
-) -> Result<(String, LobbyReadResponse), String> {
-    // Create lobby
-    let payload = LobbyCreatePayload::new(lobby_name.clone());
-    let create_result = lobbies_api::lobby_create(cfg, payload).await;
-
-    match create_result {
-        Ok(create_response) => {
-            info!("✅ Lobby created: {}", create_response.name);
-
-            // Deploy the lobby (this starts the game server)
-            let deploy_payload = LobbyDeployPayload {
-                name: create_response.name.clone(),
-            };
-            let deploy_result = lobbies_api::lobby_deploy(cfg, deploy_payload).await;
-
-            match deploy_result {
-                Ok(deploy_response) => {
-                    info!("🚀 Lobby deployed successfully!");
-                    info!("📍 Server URL: {}", deploy_response.url);
-                    info!("📊 Status: {}", deploy_response.status);
-                    Ok((create_response.name, deploy_response))
-                }
-                Err(e) => {
-                    error!("❌ Failed to deploy lobby: {:?}", e);
-                    Err(format!("Deploy failed: {:?}", e))
-                }
-            }
-        }
-        Err(e) => {
-            error!("❌ Failed to create lobby: {:?}", e);
-            Err(format!("Create failed: {:?}", e))
-        }
-    }
-}
-
-// Helper function to handle the lobby creation result
-#[cfg(all(feature = "bevygap", not(target_arch = "wasm32")))]
-fn handle_lobby_creation_result(
-    create_result: Result<(String, LobbyReadResponse), String>,
-    lobby_state: &mut ResMut<EdgegapLobbyState>,
-    commands: &mut Commands,
-) {
-    match create_result {
-        Ok((created_name, deploy_response)) => {
-            lobby_state.lobby_name = Some(created_name.clone());
-            lobby_state.lobby_response = Some(deploy_response.clone());
-            lobby_state.is_deploying = false;
-
-            let created_name_clone = created_name.clone();
-            let deploy_response_clone = deploy_response.clone();
-            commands.queue(move |world: &mut World| {
-                world.send_event(LobbyEvent::LobbyCreated(created_name_clone));
-                world.send_event(LobbyEvent::LobbyDeployed(deploy_response_clone));
-                world.send_event(LobbyEvent::ConnectedToServer);
-            });
-
-            // Now attempt to connect via BevyGap
-            info!("🔗 Attempting BevyGap connection...");
-            commands.bevygap_connect_client();
-        }
-        Err(error_msg) => {
-            lobby_state.deployment_error = Some(error_msg.clone());
-            lobby_state.is_deploying = false;
-            let error_msg_clone = error_msg.clone();
-            commands.queue(move |world: &mut World| {
-                world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg_clone));
-            });
-        }
-    }
-}
 
 // ==== PLACEHOLDER FOR FUTURE NETWORKING FEATURES ====
 // TODO: Add room message handling when networking integration is complete
