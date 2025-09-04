@@ -36,8 +36,18 @@ rand = "0.8"
 
 # on wasm, we need web-sys too and WebGL2 features:
 [target."cfg(target_family = \"wasm\")".dependencies]
-web-sys = { version = "0.3", features = ["Window", "Location"] }
+web-sys = { version = "0.3", features = [
+  "Window", 
+  "Location", 
+  "Request", 
+  "RequestInit", 
+  "RequestMode", 
+  "Response", 
+  "Headers",
+  "console"
+] }
 wasm-bindgen-futures = "0.4"
+wasm-bindgen = "0.2"
 
 [target."cfg(target_family = \"wasm\")".dependencies.bevy]
 workspace = true
