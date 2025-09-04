@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevygap_client_plugin::BevygapClientPlugin;
 
 #[cfg(feature = "bevygap")]
-use bevygap_client_plugin::prelude::BevygapConnectExt;
+use bevygap_client_plugin::prelude::{BevygapClientConfig, BevygapConnectExt};
 
 use leafwing_input_manager::prelude::*;
 
@@ -45,6 +45,16 @@ impl Plugin for ClientPlugin {
 
         // Shared game logic
         app.add_plugins(SharedPlugin);
+
+        #[cfg(feature = "bevygap")]
+        {
+            app.insert_resource(BevygapClientConfig {
+                matchmaker_url,
+                fake_client_ip: None,
+                game_name: "voidloop-quest".into(),
+                game_version: "v0.0.1".into(),
+            });
+        }
 
         // Camera setup - needed for both Lobby UI and InGame
         app.add_systems(Startup, setup_camera);
