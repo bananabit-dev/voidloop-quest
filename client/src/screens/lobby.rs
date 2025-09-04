@@ -3,7 +3,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "bevygap")]
-use bevygap_client_plugin::prelude::{BevygapConnectExt, BevygapClientState};
+use bevygap_client_plugin::prelude::BevygapConnectExt;
 
 use shared::RoomInfo;
 
@@ -11,9 +11,8 @@ use shared::RoomInfo;
 use {
     wasm_bindgen_futures::spawn_local,
     wasm_bindgen::JsCast,
-    web_sys::{RequestInit, RequestMode},
+    web_sys::{RequestInit, RequestMode, Request},
     std::cell::RefCell,
-    std::rc::Rc,
 };
 // Placeholder EdgegapLobbyState for compilation
 #[derive(Resource, Default)]
@@ -216,7 +215,7 @@ fn show_notice(
         let _ = e; // keep created
         notice.timer = 3.0; // show for 3 seconds
     }
-    if let Some(msg) = &notice.msg {
+    if let Some(_msg) = &notice.msg {
         if notice.timer > 0.0 {
             notice.timer -= time.delta_secs();
         } else {
@@ -236,7 +235,7 @@ fn pump_async_results(
     // room created
     PENDING_ROOM_CREATED.with(|cell| {
         if let Some(room) = cell.borrow_mut().take() {
-            if let Ok(mut ui) = lobby_q.get_single_mut() {
+            if let Ok(mut ui) = lobby_q.single_mut() {
                 ui.room_id = room.room_id.clone();
                 ui.is_host = true;
                 ui.lobby_mode = LobbyMode::InRoom;
@@ -247,7 +246,7 @@ fn pump_async_results(
     // room list
     PENDING_ROOM_LIST.with(|cell| {
         if let Some(list) = cell.borrow_mut().take() {
-            if let Ok(mut ui) = lobby_q.get_single_mut() {
+            if let Ok(mut ui) = lobby_q.single_mut() {
                 ui.available_rooms = list;
                 ui.lobby_mode = LobbyMode::JoinRoom;
             }
@@ -278,13 +277,13 @@ fn fetch_json(url: &str, method: &str, body: Option<String>) -> wasm_bindgen_fut
     use wasm_bindgen::JsValue;
 
     let mut opts = RequestInit::new();
-    opts.method(method);
-    opts.mode(RequestMode::Cors);
+    opts.set_method(method);
+    opts.set_mode(RequestMode::Cors);
     if let Some(b) = body {
-        opts.body(Some(&JsValue::from_str(&b)));
+        opts.set_body(&JsValue::from_str(&b));
     }
 
-    let request = web_sys::Request::new_with_str_and_init(url, &opts).unwrap();
+    let request = Request::new_with_str_and_init(url, &opts).unwrap();
     request
         .headers()
         .set("Content-Type", "application/json")
@@ -1279,7 +1278,9 @@ fn handle_lobby_events(
                                     }
                                 }
                             }
-                            Err(e) => PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed http rooms: {e:?}")))),
+                            Err(e) => {
+                                PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed http rooms: {e:?}"))));
+                            }
                         }
                     });
                 }
