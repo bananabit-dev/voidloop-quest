@@ -5,10 +5,7 @@ use rand::Rng;
 use bevygap_client_plugin::prelude::BevygapConnectExt;
 
 #[cfg(feature = "bevygap")]
-use edgegap_async::{
-    apis::{configuration::Configuration, lobbies_api},
-    models::{LobbyCreatePayload, LobbyDeployPayload, LobbyReadResponse},
-};
+use edgegap_async::models::LobbyReadResponse;
 
 #[cfg(all(feature = "bevygap", not(target_arch = "wasm32")))]
 use tokio;
@@ -16,7 +13,28 @@ use tokio;
 #[cfg(all(feature = "bevygap", target_arch = "wasm32"))]
 use wasm_bindgen_futures::spawn_local;
 
+// HTTP client dependencies for matchmaker communication
+#[cfg(feature = "bevygap")]
+use serde::{Deserialize, Serialize};
+
 use shared::RoomInfo;
+
+// Matchmaker service request/response structures
+#[cfg(feature = "bevygap")]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MatchmakingRequest {
+    pub game_mode: String,
+    pub player_id: Option<String>,
+}
+
+#[cfg(feature = "bevygap")]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MatchmakingResponse {
+    pub success: bool,
+    pub lobby_name: Option<String>,
+    pub server_url: Option<String>,
+    pub error_message: Option<String>,
+}
 
 #[derive(Resource, Default)]
 pub struct ClientRoomRegistry {
@@ -49,9 +67,7 @@ pub struct LobbyConfig {
     pub max_players: u32,         // 4 (changed from 16 for this implementation)
     pub lobby_modes: Vec<String>, // ["casual", "ranked", "custom"]
     #[cfg(feature = "bevygap")]
-    pub edgegap_api_url: String, // Edgegap API base URL
-    #[cfg(feature = "bevygap")]
-    pub edgegap_token: Option<String>, // Edgegap API token
+    pub matchmaker_api_url: String, // Matchmaker service API base URL
 }
 
 impl Default for LobbyConfig {
@@ -66,10 +82,8 @@ impl Default for LobbyConfig {
                 "custom".to_string(),
             ],
             #[cfg(feature = "bevygap")]
-            edgegap_api_url: std::env::var("EDGEGAP_BASE_URL")
-                .unwrap_or_else(|_| "https://api.edgegap.com".to_string()),
-            #[cfg(feature = "bevygap")]
-            edgegap_token: std::env::var("EDGEGAP_TOKEN").ok(),
+            matchmaker_api_url: std::env::var("MATCHMAKER_API_URL")
+                .unwrap_or_else(|_| "http://localhost:3000".to_string()),
         }
     }
 }
@@ -1041,94 +1055,103 @@ fn handle_lobby_events(
                 info!("🔍 Starting matchmaking...");
                 lobby_ui.is_searching = true;
                 
-                // Handle real BevyGap matchmaking inline
+                // Handle real matchmaking via matchmaker service
                 #[cfg(feature = "bevygap")]
                 {
                     // Get required resources for matchmaking
-                    if let (Some(lobby_config), Some(mut lobby_state)) = (lobby_config.as_deref(), lobby_state.as_mut()) {
-                        let api_token = if let Some(token) = &lobby_config.edgegap_token {
-                            token.clone()
-                        } else {
-                            let error_msg = "EDGEGAP_TOKEN not configured".to_string();
-                            error!(
-                                "🚫 EDGEGAP_TOKEN not configured! Set environment variable EDGEGAP_TOKEN"
-                            );
-                            // Send error event for next frame
-                            commands.queue(move |world: &mut World| {
-                                world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg));
-                            });
-                            return;
-                        };
-
-                        let base_url = lobby_config.edgegap_api_url.clone();
+                    if let (Some(lobby_config), Some(_lobby_state)) = (lobby_config.as_deref(), lobby_state.as_mut()) {
+                        let matchmaker_url = lobby_config.matchmaker_api_url.clone();
                         let selected_mode = lobby_ui.selected_mode.clone();
 
-                        // Generate unique lobby name using random ID (WASM-compatible)
-                        let mut rng = rand::thread_rng();
-                        let random_id = rng.gen_range(10000..99999);
-                        let lobby_name = format!(
-                            "voidloop-{}-{}",
-                            selected_mode,
-                            random_id
-                        );
+                        info!("🔧 Requesting lobby from matchmaker service: {}", matchmaker_url);
 
-                        info!("🔧 Creating Edgegap lobby: {}", lobby_name);
+                        // Create matchmaking request
+                        let request = MatchmakingRequest {
+                            game_mode: selected_mode.clone(),
+                            player_id: Some(format!("player_{}", rand::thread_rng().gen_range(1000..9999))),
+                        };
 
-                        // Configure Edgegap API client
-                        let mut cfg = Configuration::default();
-                        cfg.base_path = base_url;
-                        cfg.api_key = Some(edgegap_async::apis::configuration::ApiKey {
-                            prefix: Some("Bearer".into()),
-                            key: api_token,
-                        });
-
-                        // Handle async operations differently for native vs WASM
+                        let endpoint = format!("{}/api/matchmaking", matchmaker_url);
+                        
+                        // Handle async HTTP calls differently for native vs WASM
                         #[cfg(not(target_arch = "wasm32"))]
                         {
                             let runtime = tokio::runtime::Runtime::new().unwrap();
-                            let lobby_name_clone = lobby_name.clone();
-                            let create_result = runtime.block_on(async {
-                                create_and_deploy_lobby(&cfg, lobby_name_clone).await
+                            let response_result = runtime.block_on(async {
+                                call_matchmaker_service(&endpoint, &request).await
                             });
 
-                            handle_lobby_creation_result(
-                                create_result,
-                                &mut lobby_state,
-                                &mut commands,
-                            );
+                            match response_result {
+                                Ok(response) => {
+                                    if response.success {
+                                        if let (Some(lobby_name), Some(server_url)) = (response.lobby_name, response.server_url) {
+                                            info!("✅ Matchmaker created lobby: {}", lobby_name);
+                                            info!("📍 Server URL: {}", server_url);
+                                            
+                                            // Send success events
+                                            commands.queue(move |world: &mut World| {
+                                                world.send_event(LobbyEvent::LobbyCreated(lobby_name.clone()));
+                                                // TODO: Create LobbyReadResponse equivalent or handle differently
+                                                world.send_event(LobbyEvent::ConnectedToServer);
+                                            });
+
+                                            // Attempt BevyGap connection
+                                            info!("🔗 Attempting BevyGap connection...");
+                                            commands.bevygap_connect_client();
+                                        }
+                                    } else {
+                                        let error_msg = response.error_message.unwrap_or_else(|| "Unknown matchmaker error".to_string());
+                                        error!("❌ Matchmaker failed: {}", error_msg);
+                                        commands.queue(move |world: &mut World| {
+                                            world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg));
+                                        });
+                                    }
+                                }
+                                Err(error_msg) => {
+                                    error!("❌ Failed to contact matchmaker: {}", error_msg);
+                                    commands.queue(move |world: &mut World| {
+                                        world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg));
+                                    });
+                                }
+                            }
                         }
 
                         #[cfg(target_arch = "wasm32")]
                         {
-                            // For WASM, spawn the async task without blocking
-                            let lobby_name_clone = lobby_name.clone();
-                            
-                            // Note: In WASM, we can't directly write to the event writer from the async context
-                            // This is a limitation - in a real implementation, you'd need to use channels or
-                            // a different architecture to communicate results back to the Bevy system
+                            // For WASM, use spawn_local for async operations
                             spawn_local(async move {
-                                let result = create_and_deploy_lobby(&cfg, lobby_name_clone).await;
-                                
-                                // Log the result - in a real implementation, you'd send this through a channel
-                                // or use a different mechanism to communicate back to the Bevy system
-                                match result {
-                                    Ok((created_name, deploy_response)) => {
-                                        info!("✅ WASM: Lobby created and deployed: {}", created_name);
-                                        info!("📍 WASM: Server URL: {}", deploy_response.url);
-                                        // TODO: Send success event back to Bevy system
+                                match call_matchmaker_service(&endpoint, &request).await {
+                                    Ok(response) => {
+                                        if response.success {
+                                            if let (Some(lobby_name), Some(server_url)) = (response.lobby_name, response.server_url) {
+                                                info!("✅ WASM: Matchmaker created lobby: {}", lobby_name);
+                                                info!("📍 WASM: Server URL: {}", server_url);
+                                                // TODO: Send success events back to Bevy system via channels
+                                            }
+                                        } else {
+                                            let error_msg = response.error_message.unwrap_or_else(|| "Unknown matchmaker error".to_string());
+                                            error!("❌ WASM: Matchmaker failed: {}", error_msg);
+                                            // TODO: Send error events back to Bevy system via channels
+                                        }
                                     }
                                     Err(error_msg) => {
-                                        error!("❌ WASM: Failed to create/deploy lobby: {}", error_msg);
-                                        // TODO: Send error event back to Bevy system
+                                        error!("❌ WASM: Failed to contact matchmaker: {}", error_msg);
+                                        // TODO: Send error events back to Bevy system via channels
                                     }
                                 }
                             });
-
-                            // For now, immediately set state to indicate we started the process
-                            lobby_state.is_deploying = true;
-                            info!("🔄 WASM: Lobby creation started in background...");
+                            
+                            info!("🔄 WASM: Matchmaker request started in background...");
                         }
                     }
+                }
+                
+                // Fallback for non-bevygap builds - start local game
+                #[cfg(not(feature = "bevygap"))]
+                {
+                    info!("🎮 No bevygap feature - starting local game instead");
+                    lobby_ui.is_searching = false;
+                    next_state.set(AppState::InGame);
                 }
             }
             LobbyEvent::StartLocalGame => {
@@ -1312,79 +1335,28 @@ struct LeaveRoomButton;
 #[derive(Component)]
 struct BackButton;
 
-// Helper function to handle the async lobby creation and deployment
+// HTTP client function to call matchmaker service
 #[cfg(feature = "bevygap")]
-async fn create_and_deploy_lobby(
-    cfg: &Configuration,
-    lobby_name: String,
-) -> Result<(String, LobbyReadResponse), String> {
-    // Create lobby
-    let payload = LobbyCreatePayload::new(lobby_name.clone());
-    let create_result = lobbies_api::lobby_create(cfg, payload).await;
-
-    match create_result {
-        Ok(create_response) => {
-            info!("✅ Lobby created: {}", create_response.name);
-
-            // Deploy the lobby (this starts the game server)
-            let deploy_payload = LobbyDeployPayload {
-                name: create_response.name.clone(),
-            };
-            let deploy_result = lobbies_api::lobby_deploy(cfg, deploy_payload).await;
-
-            match deploy_result {
-                Ok(deploy_response) => {
-                    info!("🚀 Lobby deployed successfully!");
-                    info!("📍 Server URL: {}", deploy_response.url);
-                    info!("📊 Status: {}", deploy_response.status);
-                    Ok((create_response.name, deploy_response))
-                }
-                Err(e) => {
-                    error!("❌ Failed to deploy lobby: {:?}", e);
-                    Err(format!("Deploy failed: {:?}", e))
-                }
-            }
-        }
-        Err(e) => {
-            error!("❌ Failed to create lobby: {:?}", e);
-            Err(format!("Create failed: {:?}", e))
-        }
-    }
-}
-
-// Helper function to handle the lobby creation result
-#[cfg(all(feature = "bevygap", not(target_arch = "wasm32")))]
-fn handle_lobby_creation_result(
-    create_result: Result<(String, LobbyReadResponse), String>,
-    lobby_state: &mut ResMut<EdgegapLobbyState>,
-    commands: &mut Commands,
-) {
-    match create_result {
-        Ok((created_name, deploy_response)) => {
-            lobby_state.lobby_name = Some(created_name.clone());
-            lobby_state.lobby_response = Some(deploy_response.clone());
-            lobby_state.is_deploying = false;
-
-            let created_name_clone = created_name.clone();
-            let deploy_response_clone = deploy_response.clone();
-            commands.queue(move |world: &mut World| {
-                world.send_event(LobbyEvent::LobbyCreated(created_name_clone));
-                world.send_event(LobbyEvent::LobbyDeployed(deploy_response_clone));
-                world.send_event(LobbyEvent::ConnectedToServer);
-            });
-
-            // Now attempt to connect via BevyGap
-            info!("🔗 Attempting BevyGap connection...");
-            commands.bevygap_connect_client();
-        }
-        Err(error_msg) => {
-            lobby_state.deployment_error = Some(error_msg.clone());
-            lobby_state.is_deploying = false;
-            let error_msg_clone = error_msg.clone();
-            commands.queue(move |world: &mut World| {
-                world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg_clone));
-            });
-        }
+async fn call_matchmaker_service(
+    endpoint: &str,
+    request: &MatchmakingRequest,
+) -> Result<MatchmakingResponse, String> {
+    let client = reqwest::Client::new();
+    
+    let response = client
+        .post(endpoint)
+        .json(request)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+    
+    if response.status().is_success() {
+        response
+            .json::<MatchmakingResponse>()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))
+    } else {
+        Err(format!("HTTP error: {}", response.status()))
     }
 }
 

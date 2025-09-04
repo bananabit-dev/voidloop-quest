@@ -7,7 +7,7 @@ publish.workspace = true
 
 [features]
 default = ["bevygap"]
-bevygap = ["dep:bevygap_client_plugin", "dep:edgegap_async", "dep:tokio"]
+bevygap = ["dep:bevygap_client_plugin", "dep:edgegap_async", "dep:tokio", "dep:reqwest"]
 matchmaker-tls = ["bevygap_client_plugin/matchmaker-tls"]
 
 [dependencies]
@@ -30,6 +30,7 @@ leafwing-input-manager = {workspace = true, features = ["ui", "asset"]}
 bevygap_client_plugin = {workspace = true, optional = true}
 edgegap_async = { git = "https://github.com/bananabit-dev/bevygap.git", optional = true }
 tokio = { version = "1.47.0", features = ["sync","macros","io-util","rt","time"], optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
 rand = "0.8"
 
 # on wasm, we need web-sys too and WebGL2 features:

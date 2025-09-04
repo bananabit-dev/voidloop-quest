@@ -5,10 +5,20 @@ version.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "matchmaker"
+path = "src/matchmaker_main.rs"
+required-features = ["matchmaker"]
+
 [features]
 default = ["bevygap"]
 gui = ["shared/gui"]
 bevygap = ["dep:bevygap_server_plugin"]
+matchmaker = ["dep:tokio", "dep:axum", "dep:tower", "dep:tower-http", "dep:edgegap_async"]
 
 [dependencies]
 bevy.workspace = true
@@ -21,6 +31,13 @@ bevygap_server_plugin = {workspace = true, optional = true}
 clap.workspace = true
 rand = "0.8"
 uuid = { version = "1.0", features = ["v4"] }
+# HTTP server for matchmaker service
+tokio = { version = "1.47.0", features = ["full"], optional = true }
+axum = { version = "0.7", optional = true }
+tower = { version = "0.5", optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+# Edgegap API for matchmaker service
+edgegap_async = { git = "https://github.com/bananabit-dev/bevygap.git", optional = true }
 
 [lints]
 workspace = true
