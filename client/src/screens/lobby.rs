@@ -165,8 +165,6 @@ impl Plugin for LobbyPlugin {
                     update_simple_ui,
                     handle_lobby_events,
                     handle_connection_events,
-                    #[cfg(feature = "bevygap")]
-                    handle_matchmaking_events.before(handle_lobby_events),
                 )
                     .run_if(in_state(AppState::Lobby)),
             );
@@ -1003,6 +1001,11 @@ fn handle_lobby_events(
     mut lobby_ui_query: Query<&mut LobbyUI>,
     mut next_state: ResMut<NextState<AppState>>,
     mut room_registry: ResMut<ClientRoomRegistry>,
+    mut commands: Commands,
+    #[cfg(feature = "bevygap")]
+    lobby_config: Option<Res<LobbyConfig>>,
+    #[cfg(feature = "bevygap")]
+    mut lobby_state: Option<ResMut<EdgegapLobbyState>>,
 ) {
     let mut lobby_ui = if let Ok(ui) = lobby_ui_query.single_mut() {
         ui
@@ -1037,7 +1040,96 @@ fn handle_lobby_events(
             LobbyEvent::StartMatchmaking => {
                 info!("🔍 Starting matchmaking...");
                 lobby_ui.is_searching = true;
-                // Real BevyGap matchmaking will be handled by handle_matchmaking_events
+                
+                // Handle real BevyGap matchmaking inline
+                #[cfg(feature = "bevygap")]
+                {
+                    // Get required resources for matchmaking
+                    if let (Some(lobby_config), Some(mut lobby_state)) = (lobby_config.as_deref(), lobby_state.as_mut()) {
+                        let api_token = if let Some(token) = &lobby_config.edgegap_token {
+                            token.clone()
+                        } else {
+                            let error_msg = "EDGEGAP_TOKEN not configured".to_string();
+                            error!(
+                                "🚫 EDGEGAP_TOKEN not configured! Set environment variable EDGEGAP_TOKEN"
+                            );
+                            // Send error event for next frame
+                            commands.queue(move |world: &mut World| {
+                                world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg));
+                            });
+                            return;
+                        };
+
+                        let base_url = lobby_config.edgegap_api_url.clone();
+                        let selected_mode = lobby_ui.selected_mode.clone();
+
+                        // Generate unique lobby name using random ID (WASM-compatible)
+                        let mut rng = rand::thread_rng();
+                        let random_id = rng.gen_range(10000..99999);
+                        let lobby_name = format!(
+                            "voidloop-{}-{}",
+                            selected_mode,
+                            random_id
+                        );
+
+                        info!("🔧 Creating Edgegap lobby: {}", lobby_name);
+
+                        // Configure Edgegap API client
+                        let mut cfg = Configuration::default();
+                        cfg.base_path = base_url;
+                        cfg.api_key = Some(edgegap_async::apis::configuration::ApiKey {
+                            prefix: Some("Bearer".into()),
+                            key: api_token,
+                        });
+
+                        // Handle async operations differently for native vs WASM
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let runtime = tokio::runtime::Runtime::new().unwrap();
+                            let lobby_name_clone = lobby_name.clone();
+                            let create_result = runtime.block_on(async {
+                                create_and_deploy_lobby(&cfg, lobby_name_clone).await
+                            });
+
+                            handle_lobby_creation_result(
+                                create_result,
+                                &mut lobby_state,
+                                &mut commands,
+                            );
+                        }
+
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            // For WASM, spawn the async task without blocking
+                            let lobby_name_clone = lobby_name.clone();
+                            
+                            // Note: In WASM, we can't directly write to the event writer from the async context
+                            // This is a limitation - in a real implementation, you'd need to use channels or
+                            // a different architecture to communicate results back to the Bevy system
+                            spawn_local(async move {
+                                let result = create_and_deploy_lobby(&cfg, lobby_name_clone).await;
+                                
+                                // Log the result - in a real implementation, you'd send this through a channel
+                                // or use a different mechanism to communicate back to the Bevy system
+                                match result {
+                                    Ok((created_name, deploy_response)) => {
+                                        info!("✅ WASM: Lobby created and deployed: {}", created_name);
+                                        info!("📍 WASM: Server URL: {}", deploy_response.url);
+                                        // TODO: Send success event back to Bevy system
+                                    }
+                                    Err(error_msg) => {
+                                        error!("❌ WASM: Failed to create/deploy lobby: {}", error_msg);
+                                        // TODO: Send error event back to Bevy system
+                                    }
+                                }
+                            });
+
+                            // For now, immediately set state to indicate we started the process
+                            lobby_state.is_deploying = true;
+                            info!("🔄 WASM: Lobby creation started in background...");
+                        }
+                    }
+                }
             }
             LobbyEvent::StartLocalGame => {
                 info!("🎮 Starting local game!");
@@ -1219,104 +1311,6 @@ struct LeaveRoomButton;
 
 #[derive(Component)]
 struct BackButton;
-
-// 🎯 Handle real matchmaking with Edgegap integration
-#[cfg(feature = "bevygap")]
-fn handle_matchmaking_events(
-    mut lobby_events: EventReader<LobbyEvent>,
-    mut commands: Commands,
-    lobby_config: Res<LobbyConfig>,
-    mut lobby_state: ResMut<EdgegapLobbyState>,
-    lobby_ui_query: Query<&LobbyUI>,
-) {
-    for event in lobby_events.read() {
-        if let LobbyEvent::StartMatchmaking = event {
-            if let Ok(lobby_ui) = lobby_ui_query.single() {
-                let api_token = if let Some(token) = &lobby_config.edgegap_token {
-                    token.clone()
-                } else {
-                    let error_msg = "EDGEGAP_TOKEN not configured".to_string();
-                    error!(
-                        "🚫 EDGEGAP_TOKEN not configured! Set environment variable EDGEGAP_TOKEN"
-                    );
-                    commands.queue(move |world: &mut World| {
-                        world.send_event(LobbyEvent::LobbyDeploymentFailed(error_msg));
-                    });
-                    return;
-                };
-
-                let base_url = lobby_config.edgegap_api_url.clone();
-                let selected_mode = lobby_ui.selected_mode.clone();
-
-                // Generate unique lobby name using random ID (WASM-compatible)
-                let mut rng = rand::thread_rng();
-                let random_id = rng.gen_range(10000..99999);
-                let lobby_name = format!(
-                    "voidloop-{}-{}",
-                    selected_mode,
-                    random_id
-                );
-
-                info!("🔧 Creating Edgegap lobby: {}", lobby_name);
-
-                // Configure Edgegap API client
-                let mut cfg = Configuration::default();
-                cfg.base_path = base_url;
-                cfg.api_key = Some(edgegap_async::apis::configuration::ApiKey {
-                    prefix: Some("Bearer".into()),
-                    key: api_token,
-                });
-
-                // Handle async operations differently for native vs WASM
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let runtime = tokio::runtime::Runtime::new().unwrap();
-                    let lobby_name_clone = lobby_name.clone();
-                    let create_result = runtime.block_on(async {
-                        create_and_deploy_lobby(&cfg, lobby_name_clone).await
-                    });
-
-                    handle_lobby_creation_result(
-                        create_result,
-                        &mut lobby_state,
-                        &mut commands,
-                    );
-                }
-
-                #[cfg(target_arch = "wasm32")]
-                {
-                    // For WASM, spawn the async task without blocking
-                    let lobby_name_clone = lobby_name.clone();
-                    
-                    // Note: In WASM, we can't directly write to the event writer from the async context
-                    // This is a limitation - in a real implementation, you'd need to use channels or
-                    // a different architecture to communicate results back to the Bevy system
-                    spawn_local(async move {
-                        let result = create_and_deploy_lobby(&cfg, lobby_name_clone).await;
-                        
-                        // Log the result - in a real implementation, you'd send this through a channel
-                        // or use a different mechanism to communicate back to the Bevy system
-                        match result {
-                            Ok((created_name, deploy_response)) => {
-                                info!("✅ WASM: Lobby created and deployed: {}", created_name);
-                                info!("📍 WASM: Server URL: {}", deploy_response.url);
-                                // TODO: Send success event back to Bevy system
-                            }
-                            Err(error_msg) => {
-                                error!("❌ WASM: Failed to create/deploy lobby: {}", error_msg);
-                                // TODO: Send error event back to Bevy system
-                            }
-                        }
-                    });
-
-                    // For now, immediately set state to indicate we started the process
-                    lobby_state.is_deploying = true;
-                    info!("🔄 WASM: Lobby creation started in background...");
-                }
-            }
-        }
-    }
-}
 
 // Helper function to handle the async lobby creation and deployment
 #[cfg(feature = "bevygap")]
