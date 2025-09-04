@@ -4,7 +4,7 @@ use std::env;
 #[cfg(feature = "matchmaker")]
 use axum::{
     extract::State,
-    http::{HeaderMap, Method, StatusCode},
+    http::{Method, StatusCode},
     response::Json,
     routing::post,
     Router,

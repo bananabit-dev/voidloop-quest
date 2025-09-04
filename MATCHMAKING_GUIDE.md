@@ -60,16 +60,23 @@ cargo run --no-default-features -p server
 cargo run --no-default-features -p client
 ```
 
-### **For Production (Real Matchmaking)**
+### **For Production (Real Matchmaking with Secure Token Handling)**
 ```bash
-# Set up environment
+# Set up environment for MATCHMAKER SERVICE ONLY
 export EDGEGAP_BASE_URL="https://api.edgegap.com"
 export EDGEGAP_TOKEN="your-edgegap-api-token"
 
-# Run with full networking
+# Start the secure matchmaker service (handles Edgegap API)
+cargo run --bin matchmaker --features matchmaker
+
+# In another terminal, start the game server (no token needed)
 cargo run -p server
+
+# In another terminal, start the client (no token needed)
 cargo run -p client
 ```
+
+**🔐 Security Improvement**: The EDGEGAP_TOKEN is now only required by the matchmaker service, not the client. This prevents token exposure in client-side code.
 
 ### **CLI Tool for Lobby Management**
 ```bash

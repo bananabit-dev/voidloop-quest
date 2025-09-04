@@ -3,9 +3,6 @@ use bevy::prelude::*;
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::BevygapClientPlugin;
 
-#[cfg(feature = "bevygap")]
-use bevygap_client_plugin::prelude::BevygapConnectExt;
-
 use leafwing_input_manager::prelude::*;
 
 use crate::screens::{AppState, LobbyPlugin};
