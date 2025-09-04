@@ -11,7 +11,7 @@ use edgegap_async::{
 };
 
 #[cfg(all(feature = "bevygap", not(target_arch = "wasm32")))]
-use tokio::runtime::Runtime;
+use tokio;
 
 #[cfg(all(feature = "bevygap", target_arch = "wasm32"))]
 use wasm_bindgen_futures::spawn_local;
