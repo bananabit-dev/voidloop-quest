@@ -277,6 +277,10 @@ ${DOMAIN} {
     reverse_proxy matchmaker-httpd:3000
   }
 
+  handle_path /hook {
+    reverse_proxy webhook_sink:3001
+  }
+
   handle_path /lobby* {
     reverse_proxy webhook_sink:3001
   }
