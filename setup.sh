@@ -278,7 +278,7 @@ ${DOMAIN} {
   }
 
   handle_path /lobby* {
-    reverse_proxy lobby:3001
+    reverse_proxy webhook_sink:3001
   }
 
   reverse_proxy client:80
@@ -307,7 +307,7 @@ services:
     depends_on:
       - client
       - matchmaker-httpd
-      - lobby
+      - webhook_sink
     ports:
       - "80:80"
       - "443:443"
@@ -429,7 +429,7 @@ services:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
 
-  lobby:
+  webhook_sink:
     image: \${LOBBY_IMAGE}
     restart: unless-stopped
     environment:
