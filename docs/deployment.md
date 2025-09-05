@@ -338,6 +338,12 @@ server {
         proxy_send_timeout 3600s;
     }
 
+    # 🏠 Lobby API (served by webhook_sink service)
+    location /lobby/ {
+        proxy_pass http://localhost:3001/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
 }
 ```
 
@@ -474,6 +480,7 @@ LIGHTYEAR_PRIVATE_KEY="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,
 # WHERE: Client builds, game servers, all services
 DOMAIN="voidloop.quest"
 MATCHMAKER_URL="wss://voidloop.quest/matchmaker/ws"
+LOBBY_URL="https://voidloop.quest/lobby"  # Served by webhook_sink service
 NATS_URL="nats://nats:4222"
 
 # ============================================
@@ -667,6 +674,7 @@ sudo certbot certonly --webroot \
 # 6️⃣ Verify deployment
 curl https://voidloop.quest/health
 curl https://voidloop.quest/matchmaker/health
+curl https://voidloop.quest/lobby/health
 ```
 
 ## 📊 Production Deployment
@@ -807,15 +815,26 @@ volumes:
 ✅ Backup strategy implemented
 ```
 
-### 🔒 Enhanced Webhook Sink Security Options
+### 🔒 Enhanced Webhook Sink & Lobby Security Options
 
-The webhook_sink service is now internal-only and not exposed via reverse proxy routes. It communicates internally with other services through NATS and database connections.
+The webhook_sink service provides both webhook processing and lobby API endpoints. It can be secured using several approaches:
 
-#### Internal Service Security
-- Service runs on internal Docker network only
-- No public HTTP endpoints exposed
-- Authenticates via NATS with username/password
+#### Option 1: Public Lobby API with Rate Limiting
+```nginx
+# Allow public access to lobby API with rate limiting
+location /lobby/api/ {
+    limit_req zone=lobby_limit burst=20 nodelay;
+    proxy_pass http://webhook_sink:3001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+#### Option 2: Internal Service Security
+- Service runs on internal Docker network
+- NATS authentication with username/password
 - Database access secured with strong passwords
+- Webhook endpoints can be restricted to internal network only
 
 
 ## 🐛 Troubleshooting
@@ -903,6 +922,7 @@ curl -v https://voidloop.quest/health
 ### 🔗 Quick Links
 - 🏠 **Game URL**: https://voidloop.quest
 - 📡 **Matchmaker**: wss://voidloop.quest/matchmaker/ws
+- 🏠 **Lobby API**: https://voidloop.quest/lobby (webhook_sink service)
 - 📊 **Monitoring**: https://voidloop.quest/grafana
 - 📝 **Logs**: https://voidloop.quest/loki
 
