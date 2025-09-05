@@ -259,10 +259,10 @@ EOF
 # ---------- Caddyfile ----------
 cat > Caddyfile <<EOF
 {
-  email ${EMAIL}
+  email \${EMAIL}
 }
 
-${DOMAIN} {
+\${DOMAIN} {
   encode zstd gzip
 
   header {
@@ -273,15 +273,25 @@ ${DOMAIN} {
     Cross-Origin-Opener-Policy "same-origin"
   }
 
-  handle_path /matchmaker* {
+  # Client static files
+  handle {
+    reverse_proxy client:80
+  }
+
+  # Matchmaker WebSocket and HTTP endpoints
+  handle /matchmaker/* {
     reverse_proxy matchmaker-httpd:3000
   }
 
-  handle_path /lobby* {
-    reverse_proxy webhook_sink:3001
+  # Webhook endpoints - direct routing to lobby service
+  handle /hook/* {
+    reverse_proxy lobby:3001
   }
 
-  reverse_proxy client:80
+  # Health check endpoint
+  handle /health {
+    respond "OK" 200
+  }
 }
 EOF
 
@@ -307,7 +317,7 @@ services:
     depends_on:
       - client
       - matchmaker-httpd
-      - webhook_sink
+      - lobby
     ports:
       - "80:80"
       - "443:443"
@@ -344,11 +354,11 @@ services:
     restart: unless-stopped
     # The nats image already runs nats-server; this passes the config path
     command: ["--config", "/config/nats-server.conf"]
-    networks: [internal, public]
+    networks: [internal]
     ports:
       - "4222:4222"
     volumes:
-      - ./nats-config:/config:ro
+      - /opt/voidloop/nats-config:/config:ro
       - nats_data:/data
     read_only: true
     tmpfs:
@@ -363,52 +373,56 @@ services:
     image: \${MM_HTTPD_IMAGE}
     restart: unless-stopped
     environment:
-      - NATS_HOST=nats.\${DOMAIN}
+      - NATS_HOST=nats
       - NATS_USER=matchmaker-httpd
       - NATS_PASSWORD=\${NATS_MATCHMAKER_HTTPD_PASSWORD}
       - NATS_CA=/nats-ca/rootCA.pem
     volumes:
-      - ./nats-config/rootCA.pem:/nats-ca/rootCA.pem:ro
+      - /opt/voidloop/nats-config/rootCA.pem:/nats-ca/rootCA.pem:ro
     command: >
       --bind 0.0.0.0:3000
       --cors https://\${DOMAIN}
       --player-limit \${MAX_PLAYERS}
       --fake-ip 127.0.0.1
-    networks: [internal,public]
+    networks: [internal, public]
     read_only: true
     tmpfs: ["/tmp"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
       interval: 15s
       timeout: 3s
       retries: 5
     logging:
       driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   matchmaker:
     image: \${MM_IMAGE}
     restart: unless-stopped
     environment:
-      - NATS_HOST=nats.\${DOMAIN}
+      - NATS_HOST=nats
       - NATS_USER=matchmaker
       - NATS_PASSWORD=\${NATS_MATCHMAKER_PASSWORD}
       - NATS_CA=/nats-ca/rootCA.pem
       - EDGEGAP_API_KEY=\${EDGEGAP_API_KEY}
     volumes:
-      - ./nats-config/rootCA.pem:/nats-ca/rootCA.pem:ro
+      - /opt/voidloop/nats-config/rootCA.pem:/nats-ca/rootCA.pem:ro
     command: >
       --app-name voidloop-quest
-      --app-version 1
+      --app-version v0.0.17
       --lightyear-protocol-id \${LIGHTYEAR_PROTOCOL_ID}
       --lightyear-private-key "\${LIGHTYEAR_PRIVATE_KEY}"
       --player-limit \${MAX_PLAYERS}
-    networks: [internal,public]
+    networks: [internal, public]
     read_only: true
     tmpfs: ["/tmp"]
     logging:
       driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   postgres:
     image: postgres:16-alpine
@@ -427,34 +441,38 @@ services:
       retries: 10
     logging:
       driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  webhook_sink:
+  lobby:
     image: \${LOBBY_IMAGE}
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgres://lobby:\${DB_PASSWORD}@postgres:5432/voidloop_lobby
       - JWT_SECRET=\${JWT_SECRET}
-      - NATS_HOST=nats.\${DOMAIN}
+      - NATS_HOST=nats
       - NATS_USER=lobby
       - NATS_PASSWORD=\${NATS_LOBBY_PASSWORD}
       - NATS_CA=/nats-ca/rootCA.pem
     volumes:
-      - ./nats-config/rootCA.pem:/nats-ca/rootCA.pem:ro
+      - /opt/voidloop/nats-config/rootCA.pem:/nats-ca/rootCA.pem:ro
     depends_on:
       - postgres
       - nats
-    networks: [internal,public]
+    networks: [internal, public]
     read_only: true
     tmpfs: ["/tmp"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/ || exit 1"]
       interval: 15s
       timeout: 3s
       retries: 5
     logging:
       driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
+      options:
+        max-size: "10m"
+        max-file: "3"
 EOF
 
 # ---------- Postgres backup script & cron ----------
