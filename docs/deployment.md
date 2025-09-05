@@ -339,7 +339,7 @@ server {
     }
 
     # 🏠 Lobby API
-    location /hook/lobby/ {
+    location /hook/ {
         proxy_pass http://localhost:3001/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -480,7 +480,7 @@ LIGHTYEAR_PRIVATE_KEY="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,
 # WHERE: Client builds, game servers, all services
 DOMAIN="voidloop.quest"
 MATCHMAKER_URL="wss://voidloop.quest/matchmaker/ws"
-LOBBY_URL="https://voidloop.quest/hook/lobby"
+LOBBY_URL="https://voidloop.quest/hook"
 NATS_URL="nats://nats:4222"
 
 # ============================================
@@ -820,7 +820,7 @@ volumes:
 #### Option 1: IP Allowlisting (Simple)
 ```nginx
 # Only allow known game server IPs to access lobby
-location /hook/lobby/api/ {
+location /hook/api/ {
     allow 192.168.1.0/24;  # Internal network
     allow 203.0.113.42;    # Edgegap server IP
     deny all;
@@ -859,7 +859,7 @@ server {
     ssl_client_certificate /etc/nginx/ca.crt;
     ssl_verify_client on;
     
-    location /hook/lobby/ {
+    location /hook/ {
         if ($ssl_client_verify != SUCCESS) {
             return 403;
         }
