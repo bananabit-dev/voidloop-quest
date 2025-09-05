@@ -283,8 +283,9 @@ cat > Caddyfile <<EOF
     reverse_proxy matchmaker-httpd:3000
   }
 
-  # Webhook endpoints - direct routing to lobby service
+  # Webhook endpoints - strip /hook prefix and route to lobby service
   handle /hook/* {
+    uri strip_prefix /hook
     reverse_proxy lobby:3001
   }
 
