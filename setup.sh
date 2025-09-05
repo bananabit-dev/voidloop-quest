@@ -278,7 +278,7 @@ ${DOMAIN} {
   }
 
   handle_path /lobby* {
-    reverse_proxy webhook_sink:3001
+    reverse_proxy lobby:3001
   }
 
   reverse_proxy client:80

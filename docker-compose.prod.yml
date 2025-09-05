@@ -91,6 +91,8 @@ services:
       - "traefik.http.routers.matchmaker.entrypoints=websecure"
       - "traefik.http.routers.matchmaker.tls.certresolver=le"
       - "traefik.http.services.matchmaker.loadbalancer.server.port=3000"
+      # Enable WebSocket support
+      - "traefik.http.services.matchmaker.loadbalancer.server.scheme=http"
     networks: [internal]
 
   # 🎲 BevyGap Matchmaker Service (private)
