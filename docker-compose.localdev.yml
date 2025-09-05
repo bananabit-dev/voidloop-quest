@@ -44,22 +44,17 @@ services:
     #   - lobby
 
   # Optional: Lobby server for matchmaking (BevyGap)
-  # lobby:
-  #   build:
-  #     context: ..
-  #     dockerfile: voidloop-quest/tools/lobby/Dockerfile
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - DATABASE_URL=postgres://voidloop:voidloop@db:5432/lobby
-  #     - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
-  #     - RUST_LOG=info
-  #   restart: unless-stopped
-  #   networks:
-  #     - voidloop-net
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
+  lobby:
+    build:
+      context: .
+      dockerfile: tools/lobby-server/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    networks:
+      - voidloop-net
 
   # Optional: PostgreSQL database for lobby
   # db:

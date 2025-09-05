@@ -1,5 +1,5 @@
 [workspace]
-members = [ "client", "server", "shared", "tools/lobby" ]
+members = [ "client", "server", "shared", "tools/lobby", "tools/lobby-server" ]
 
 
 resolver = "2"

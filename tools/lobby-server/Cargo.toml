@@ -1,0 +1,20 @@
+[package]
+name = "lobby-server"
+version.workspace = true
+edition = "2021"
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "lobby-server"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+warp = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1.0", features = ["v4"] }
+clap = { version = "4", features = ["derive"] }

@@ -119,20 +119,13 @@ services:
 
   # 🏠 Lobby API (optional; private; routed at /lobby)
   lobby:
-    image: bevygap_lobby
+    image: voidloop-quest-lobby:latest
     build:
-      context: ./work/bevygap   # adjust to your repo path
-      dockerfile: ./bevygap_lobby/Dockerfile
+      context: .
+      dockerfile: ./tools/lobby-server/Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: "postgres://lobby:${DB_PASSWORD}@postgres:5432/voidloop_lobby"
-      JWT_SECRET: "${JWT_SECRET}"
-      NATS_HOST: "nats"
-      NATS_USER: "${NATS_LOBBY_USER:-lobby}"
-      NATS_PASS: "${NATS_LOBBY_PASS:-lobby}"
-    depends_on:
-      - nats
-      - postgres
+      RUST_LOG: "info"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lobby.rule=Host(`voidloop.quest`) && PathPrefix(`/lobby`)"
