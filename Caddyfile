@@ -13,6 +13,11 @@
         reverse_proxy matchmaker-httpd:3000
     }
 
+    # Lobby API endpoints - direct routing to lobby service
+    handle /lobby/* {
+        reverse_proxy lobby:3001
+    }
+
     # Webhook endpoints - direct routing to lobby service
     handle /hook/* {
         reverse_proxy lobby:3001
