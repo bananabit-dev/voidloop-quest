@@ -1,0 +1,25 @@
+{
+    email {$EMAIL}
+}
+
+{$DOMAIN} {
+    # Client static files
+    handle {
+        reverse_proxy client:80
+    }
+
+    # Matchmaker WebSocket and HTTP endpoints
+    handle /matchmaker/* {
+        reverse_proxy matchmaker-httpd:3000
+    }
+
+    # Webhook endpoints - direct routing to lobby service
+    handle /hook/* {
+        reverse_proxy lobby:3001
+    }
+
+    # Health check endpoint
+    handle /health {
+        respond "OK" 200
+    }
+}
