@@ -338,12 +338,6 @@ server {
         proxy_send_timeout 3600s;
     }
 
-    # 🏠 Lobby API
-    location /lobby/ {
-        proxy_pass http://localhost:3001/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
 }
 ```
 
@@ -480,7 +474,6 @@ LIGHTYEAR_PRIVATE_KEY="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,
 # WHERE: Client builds, game servers, all services
 DOMAIN="voidloop.quest"
 MATCHMAKER_URL="wss://voidloop.quest/matchmaker/ws"
-LOBBY_URL="https://voidloop.quest/lobby"
 NATS_URL="nats://nats:4222"
 
 # ============================================
@@ -674,7 +667,6 @@ sudo certbot certonly --webroot \
 # 6️⃣ Verify deployment
 curl https://voidloop.quest/health
 curl https://voidloop.quest/matchmaker/health
-curl https://voidloop.quest/lobby/health
 ```
 
 ## 📊 Production Deployment
@@ -815,58 +807,16 @@ volumes:
 ✅ Backup strategy implemented
 ```
 
-### 🔒 Enhanced Lobby Security Options
+### 🔒 Enhanced Webhook Sink Security Options
 
-#### Option 1: IP Allowlisting (Simple)
-```nginx
-# Only allow known game server IPs to access lobby
-location /lobby/api/ {
-    allow 192.168.1.0/24;  # Internal network
-    allow 203.0.113.42;    # Edgegap server IP
-    deny all;
-    proxy_pass http://lobby:3001;
-}
-```
+The webhook_sink service is now internal-only and not exposed via reverse proxy routes. It communicates internally with other services through NATS and database connections.
 
-#### Option 2: JWT Authentication (Recommended)
-```rust
-// Server generates JWT when starting
-use jsonwebtoken::{encode, Header, EncodingKey};
+#### Internal Service Security
+- Service runs on internal Docker network only
+- No public HTTP endpoints exposed
+- Authenticates via NATS with username/password
+- Database access secured with strong passwords
 
-let token = encode(
-    &Header::default(),
-    &Claims {
-        server_id: "game-server-1",
-        exp: SystemTime::now() + Duration::from_secs(3600),
-    },
-    &EncodingKey::from_secret(lobby_jwt_secret.as_ref()),
-)?;
-
-// Include JWT in lobby requests
-client.post("/lobby/register")
-    .header("Authorization", format!("Bearer {}", token))
-    .send();
-```
-
-#### Option 3: Mutual TLS (Most Secure)
-```bash
-# Generate certificates for each server
-openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365
-
-# Configure nginx for mTLS
-server {
-    listen 443 ssl;
-    ssl_client_certificate /etc/nginx/ca.crt;
-    ssl_verify_client on;
-    
-    location /lobby/ {
-        if ($ssl_client_verify != SUCCESS) {
-            return 403;
-        }
-        proxy_pass http://lobby:3001;
-    }
-}
-```
 
 ## 🐛 Troubleshooting
 
@@ -953,7 +903,6 @@ curl -v https://voidloop.quest/health
 ### 🔗 Quick Links
 - 🏠 **Game URL**: https://voidloop.quest
 - 📡 **Matchmaker**: wss://voidloop.quest/matchmaker/ws
-- 🏠 **Lobby API**: https://voidloop.quest/lobby
 - 📊 **Monitoring**: https://voidloop.quest/grafana
 - 📝 **Logs**: https://voidloop.quest/loki
 

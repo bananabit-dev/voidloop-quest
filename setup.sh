@@ -277,10 +277,6 @@ ${DOMAIN} {
     reverse_proxy matchmaker-httpd:3000
   }
 
-  handle_path /lobby* {
-    reverse_proxy webhook_sink:3001
-  }
-
   reverse_proxy client:80
 }
 EOF
@@ -307,7 +303,6 @@ services:
     depends_on:
       - client
       - matchmaker-httpd
-      - webhook_sink
     ports:
       - "80:80"
       - "443:443"
@@ -594,7 +589,6 @@ docker compose -f /opt/voidloop/docker-compose.yml logs [service-name] --tail=50
 
 # Test endpoints
 curl -I https://${DOMAIN}/health
-curl -I https://${DOMAIN}/lobby/health
 curl -I https://${DOMAIN}/matchmaker/health
 \`\`\`
 EOF
@@ -635,7 +629,6 @@ echo "  docker compose -f $APP_DIR/docker-compose.yml logs -f"
 echo
 echo "Test endpoints (once DNS is live and TLS issued):"
 echo "  curl -I https://${DOMAIN}/health"
-echo "  curl -I https://${DOMAIN}/lobby/health"
 echo "  curl -I https://${DOMAIN}/matchmaker/health"
 echo
 echo "Test NATS TLS connection:"
