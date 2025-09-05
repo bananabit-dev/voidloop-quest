@@ -60,8 +60,8 @@ MM_HTTPD_IMAGE="${MM_HTTPD_IMAGE:-bananabit/bevygap_matchmaker_httpd:latest}"
 read -rp "Matchmaker image [bananabit/bevygap_matchmaker:latest]: " MM_IMAGE
 MM_IMAGE="${MM_IMAGE:-bananabit/bevygap_matchmaker:latest}"
 
-read -rp "Lobby image [bananabit/bevygap_lobby:latest]: " LOBBY_IMAGE
-LOBBY_IMAGE="${LOBBY_IMAGE:-bananabit/bevygap_lobby:latest}"
+read -rp "Lobby websink hook image [bananabit/bevygap_websink_hook:latest]: " LOBBY_IMAGE
+LOBBY_IMAGE="${LOBBY_IMAGE:-bananabit/bevygap_websink_hook:latest}"
 
 read -rp "Max players per session [4]: " MAX_PLAYERS
 MAX_PLAYERS="${MAX_PLAYERS:-4}"
@@ -112,7 +112,7 @@ echo "  Email:                  $EMAIL"
 echo "  Client image:           $CLIENT_IMAGE"
 echo "  MM HTTPD image:         $MM_HTTPD_IMAGE"
 echo "  MM image:               $MM_IMAGE"
-echo "  Lobby image:            $LOBBY_IMAGE"
+echo "  Lobby websink hook image: $LOBBY_IMAGE"
 echo "  Max players:            $MAX_PLAYERS"
 echo "  Lightyear Protocol ID:  $LIGHTYEAR_PROTOCOL_ID"
 echo "  Lightyear Private Key:  ${LIGHTYEAR_PRIVATE_KEY:+[SET]}${LIGHTYEAR_PRIVATE_KEY:+" (hidden)"}"
