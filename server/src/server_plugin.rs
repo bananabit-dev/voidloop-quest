@@ -5,10 +5,19 @@ use bevygap_server_plugin::prelude::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 
-pub struct ServerPlugin;
+pub struct ServerPlugin {
+    pub certificate_digest: String,
+}
+
+impl ServerPlugin {
+    pub fn new(certificate_digest: String) -> Self {
+        Self { certificate_digest }
+    }
+}
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
@@ -35,9 +44,14 @@ impl Plugin for ServerPlugin {
         // Room management
         app.insert_resource(RoomRegistry::new());
         app.insert_resource(MatchmakingQueue::new());
+        
+        // Server metadata with certificate digest
+        app.insert_resource(ServerMetadata::new(
+            self.certificate_digest.clone()
+        ));
 
         // Server-specific systems
-        app.add_systems(Startup, setup_world);
+        app.add_systems(Startup, (setup_world, log_server_metadata));
 
         // Player management system - handles spawning/despawning players
         app.add_systems(Update, (handle_player_management, manage_room_lifecycle));
@@ -77,6 +91,17 @@ fn setup_world(mut commands: Commands) {
     }
 
     info!("World setup complete with {} platforms", 5);
+}
+
+// Log server metadata at startup
+fn log_server_metadata(server_metadata: Res<ServerMetadata>) {
+    info!("📋 Server metadata:");
+    info!("  Server ID: {}", server_metadata.server_id);
+    info!("  Certificate digest: {}", server_metadata.certificate_digest);
+    info!("  Git SHA: {}", server_metadata.git_sha);
+    info!("  Build timestamp: {}", server_metadata.build_timestamp);
+    info!("  Rust version: {}", server_metadata.rust_version);
+    info!("  Target triple: {}", server_metadata.target_triple);
 }
 
 // Player management system that handles room logic
@@ -159,6 +184,42 @@ fn manage_room_lifecycle(
     for room_id in rooms_to_remove {
         room_registry.rooms.remove(&room_id);
         info!("Removed empty room: {}", room_id);
+    }
+}
+
+// Server metadata resource - stores certificate digest and build information
+#[derive(Resource, Clone, Debug)]
+pub struct ServerMetadata {
+    pub certificate_digest: String,
+    pub git_sha: String,
+    pub build_timestamp: String,
+    pub rust_version: String,
+    pub target_triple: String,
+    pub server_id: String,
+}
+
+impl ServerMetadata {
+    pub fn new(certificate_digest: String) -> Self {
+        Self {
+            certificate_digest,
+            git_sha: env!("VERGEN_GIT_SHA").to_string(),
+            build_timestamp: env!("VERGEN_BUILD_TIMESTAMP").to_string(),
+            rust_version: env!("VERGEN_RUSTC_SEMVER").to_string(),
+            target_triple: env!("VERGEN_CARGO_TARGET_TRIPLE").to_string(),
+            server_id: Uuid::new_v4().to_string(),
+        }
+    }
+    
+    /// Get a summary of server metadata for logging or API responses
+    pub fn get_metadata_summary(&self) -> HashMap<String, String> {
+        let mut metadata = HashMap::new();
+        metadata.insert("certificate_digest".to_string(), self.certificate_digest.clone());
+        metadata.insert("server_id".to_string(), self.server_id.clone());
+        metadata.insert("git_sha".to_string(), self.git_sha.clone());
+        metadata.insert("build_timestamp".to_string(), self.build_timestamp.clone());
+        metadata.insert("rust_version".to_string(), self.rust_version.clone());
+        metadata.insert("target_triple".to_string(), self.target_triple.clone());
+        metadata
     }
 }
 
