@@ -41,12 +41,14 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let mut cfg = Configuration::default();
-    cfg.base_path = cli.base_url;
-    cfg.api_key = Some(edgegap_async::apis::configuration::ApiKey {
-        prefix: Some("Bearer".into()),
-        key: cli.token,
-    });
+    let cfg = Configuration {
+        base_path: cli.base_url,
+        api_key: Some(edgegap_async::apis::configuration::ApiKey {
+            prefix: Some("Bearer".into()),
+            key: cli.token,
+        }),
+        ..Default::default()
+    };
 
     match cli.command {
         Commands::Create { name } => {
