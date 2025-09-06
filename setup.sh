@@ -283,10 +283,10 @@ cat > Caddyfile <<EOF
     reverse_proxy matchmaker-httpd:3000
   }
 
-  # Webhook endpoints - strip /hook prefix and route to lobby service
+  # Webhook endpoints - strip /hook prefix and route to webhook_sink service
   handle /hook/* {
     uri strip_prefix /hook
-    reverse_proxy lobby:3001
+    reverse_proxy webhook_sink:3001
   }
 
   # Health check endpoint
@@ -318,7 +318,7 @@ services:
     depends_on:
       - client
       - matchmaker-httpd
-      - lobby
+      - webhook_sink
     ports:
       - "80:80"
       - "443:443"
@@ -446,7 +446,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  lobby:
+  webhook_sink:
     image: \${LOBBY_IMAGE}
     restart: unless-stopped
     environment:
@@ -613,7 +613,7 @@ docker compose -f /opt/voidloop/docker-compose.yml logs [service-name] --tail=50
 
 # Test endpoints
 curl -I https://${DOMAIN}/health
-curl -I https://${DOMAIN}/lobby/health
+curl -I https://${DOMAIN}/hook/health
 curl -I https://${DOMAIN}/matchmaker/health
 \`\`\`
 EOF
@@ -654,7 +654,7 @@ echo "  docker compose -f $APP_DIR/docker-compose.yml logs -f"
 echo
 echo "Test endpoints (once DNS is live and TLS issued):"
 echo "  curl -I https://${DOMAIN}/health"
-echo "  curl -I https://${DOMAIN}/lobby/health"
+echo "  curl -I https://${DOMAIN}/hook/health"
 echo "  curl -I https://${DOMAIN}/matchmaker/health"
 echo
 echo "Test NATS TLS connection:"

@@ -819,12 +819,12 @@ volumes:
 
 #### Option 1: IP Allowlisting (Simple)
 ```nginx
-# Only allow known game server IPs to access lobby
+# Only allow known game server IPs to access webhook_sink
 location /hook/api/ {
     allow 192.168.1.0/24;  # Internal network
     allow 203.0.113.42;    # Edgegap server IP
     deny all;
-    proxy_pass http://lobby:3001;
+    proxy_pass http://webhook_sink:3001;
 }
 ```
 
@@ -863,7 +863,7 @@ server {
         if ($ssl_client_verify != SUCCESS) {
             return 403;
         }
-        proxy_pass http://lobby:3001;
+        proxy_pass http://webhook_sink:3001;
     }
 }
 ```

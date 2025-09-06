@@ -18,7 +18,7 @@ services:
     depends_on:
       - client
       - matchmaker-httpd
-      - lobby
+      - webhook_sink
     ports:
       - "80:80"
       - "443:443"
@@ -150,7 +150,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  lobby:
+  webhook_sink:
     image: ${LOBBY_IMAGE}
     restart: unless-stopped
     environment:

@@ -13,9 +13,9 @@
         reverse_proxy matchmaker-httpd:3000
     }
 
-    # Webhook endpoints - direct routing to lobby service
+    # Webhook endpoints - direct routing to webhook_sink service
     handle /hook/* {
-        reverse_proxy lobby:3001
+        reverse_proxy webhook_sink:3001
     }
 
     # Health check endpoint
