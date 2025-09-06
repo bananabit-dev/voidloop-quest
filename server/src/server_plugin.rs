@@ -7,6 +7,7 @@ use lightyear::prelude::*;
 use std::collections::HashMap;
 
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
+use crate::build_info::BuildInfo;
 
 pub struct ServerPlugin;
 
@@ -35,12 +36,15 @@ impl Plugin for ServerPlugin {
         // Room management
         app.insert_resource(RoomRegistry::new());
         app.insert_resource(MatchmakingQueue::new());
+        
+        // Build metadata for diagnostics
+        app.insert_resource(BuildInfo::get());
 
         // Server-specific systems
         app.add_systems(Startup, setup_world);
 
         // Player management system - handles spawning/despawning players
-        app.add_systems(Update, (handle_player_management, manage_room_lifecycle));
+        app.add_systems(Update, (handle_player_management, manage_room_lifecycle, log_server_status));
 
         // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
         // Example: Game rules, scoring, AI, matchmaking logic, etc.
@@ -254,6 +258,35 @@ impl MatchmakingQueue {
             }
         }
         None
+    }
+}
+
+/// System to periodically log server status with build information for diagnostics
+fn log_server_status(
+    time: Res<Time>,
+    build_info: Res<BuildInfo>,
+    room_registry: Res<RoomRegistry>,
+    mut last_log: Local<f32>,
+) {
+    let current_time = time.elapsed_secs();
+    
+    // Log server status every 5 minutes (300 seconds)
+    if current_time - *last_log >= 300.0 {
+        *last_log = current_time;
+        
+        info!("📊 Server Status Report:");
+        info!("   Uptime: {:.1} minutes", current_time / 60.0);
+        info!("   Active Rooms: {}", room_registry.rooms.len());
+        info!("   Build: {}", build_info.format_for_log());
+        info!("   Git SHA: {} ({})", build_info.git_sha, build_info.git_branch);
+        
+        // Log room details if any exist
+        if !room_registry.rooms.is_empty() {
+            info!("   Room Details:");
+            for (room_id, room_data) in &room_registry.rooms {
+                info!("     Room {}: {} players", room_id, room_data.current_players);
+            }
+        }
     }
 }
 
