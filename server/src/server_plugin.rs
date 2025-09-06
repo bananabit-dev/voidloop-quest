@@ -183,27 +183,14 @@ pub struct ServerMetadata {
     pub startup_time: f64,
 }
 
-#[derive(Debug, Clone)]
-pub struct BuildInfo {
-    pub git_sha: String,
-    pub git_branch: String,
-    pub build_timestamp: String,
-    pub rustc_version: String,
-    pub target_triple: String,
-}
+
 
 impl ServerMetadata {
     pub fn new() -> Self {
         Self {
             certificate_digest: env::var("LIGHTYEAR_CERTIFICATE_DIGEST").ok(),
             fqdn: env::var("SERVER_FQDN").ok(),
-            build_info: BuildInfo {
-                git_sha: env!("VERGEN_GIT_SHA").to_string(),
-                git_branch: env!("VERGEN_GIT_BRANCH").to_string(),
-                build_timestamp: env!("VERGEN_BUILD_TIMESTAMP").to_string(),
-                rustc_version: env!("VERGEN_RUSTC_SEMVER").to_string(),
-                target_triple: env!("VERGEN_CARGO_TARGET_TRIPLE").to_string(),
-            },
+            build_info: BuildInfo::get(),
             startup_time: 0.0,
         }
     }
