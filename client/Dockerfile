@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN cargo install cargo-chef --locked
 
 # Install wasm-bindgen-cli with specific version for compatibility
-RUN cargo install wasm-bindgen-cli --version 0.2.100 --locked
+RUN cargo install wasm-bindgen-cli --version 0.2.101 --locked
 
 # Add WASM target
 RUN rustup target add wasm32-unknown-unknown
