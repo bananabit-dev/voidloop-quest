@@ -60,6 +60,11 @@ fn main() {
     info!("📡 Listening on port {}", args.port);
     info!("🔐 Certificate digest: {}", certificate_digest);
     
+    // Also print to stdout for visibility
+    println!("🎮 Simple Platformer Server starting...");
+    println!("📡 Listening on port {}", args.port);
+    println!("🔐 Certificate digest: {}", certificate_digest);
+    
     // Log build information
     log_build_info();
 
@@ -109,4 +114,34 @@ fn log_build_info() {
     info!("  Build timestamp: {}", env!("VERGEN_BUILD_TIMESTAMP"));
     info!("  Rust version: {}", env!("VERGEN_RUSTC_SEMVER"));
     info!("  Target triple: {}", env!("VERGEN_CARGO_TARGET_TRIPLE"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn test_certificate_digest_from_env() {
+        // Test that digest is read from environment variable
+        env::set_var("LIGHTYEAR_CERTIFICATE_DIGEST", "test-digest-123");
+        let digest = get_certificate_digest();
+        assert_eq!(digest, "test-digest-123");
+        env::remove_var("LIGHTYEAR_CERTIFICATE_DIGEST");
+    }
+
+    #[test]
+    fn test_certificate_digest_fallback() {
+        // Ensure environment variable is not set
+        env::remove_var("LIGHTYEAR_CERTIFICATE_DIGEST");
+        let digest = get_certificate_digest();
+        
+        // Should generate a deterministic digest starting with "sha256:"
+        assert!(digest.starts_with("sha256:"));
+        assert!(digest.len() > 7); // "sha256:" + some hex digits
+        
+        // Should be deterministic - calling again should give same result
+        let digest2 = get_certificate_digest();
+        assert_eq!(digest, digest2);
+    }
 }

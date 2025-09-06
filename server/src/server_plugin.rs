@@ -54,7 +54,7 @@ impl Plugin for ServerPlugin {
         app.add_systems(Startup, (setup_world, log_server_metadata));
 
         // Player management system - handles spawning/despawning players
-        app.add_systems(Update, (handle_player_management, manage_room_lifecycle));
+        app.add_systems(Update, (handle_player_management, manage_room_lifecycle, periodic_status_report));
 
         // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
         // Example: Game rules, scoring, AI, matchmaking logic, etc.
@@ -184,6 +184,36 @@ fn manage_room_lifecycle(
     for room_id in rooms_to_remove {
         room_registry.rooms.remove(&room_id);
         info!("Removed empty room: {}", room_id);
+    }
+}
+
+// Periodic status report system - reports server health and certificate digest
+fn periodic_status_report(
+    server_metadata: Res<ServerMetadata>,
+    room_registry: Res<RoomRegistry>,
+    players: Query<Entity, With<Player>>,
+    time: Res<Time>,
+) {
+    // Report status every 60 seconds
+    let elapsed = time.elapsed_secs();
+    if elapsed % 60.0 < 1.0 && elapsed > 5.0 {
+        let player_count = players.iter().count();
+        let room_count = room_registry.rooms.len();
+        
+        info!("📊 Server status report:");
+        info!("  Certificate digest: {}", server_metadata.certificate_digest);
+        info!("  Server ID: {}", server_metadata.server_id);
+        info!("  Active players: {}", player_count);
+        info!("  Active rooms: {}", room_count);
+        info!("  Uptime: {:.1}s", elapsed);
+        
+        // Log room details if any exist
+        if room_count > 0 {
+            for (room_id, room_data) in &room_registry.rooms {
+                info!("    Room '{}': {}/{} players", 
+                      room_id, room_data.current_players, room_data.max_players);
+            }
+        }
     }
 }
 
