@@ -37,6 +37,8 @@ thread_local! {
     static PENDING_ROOM_CREATED: RefCell<Option<RoomInfo>> = RefCell::new(None);
     static PENDING_ROOM_LIST: RefCell<Option<Vec<RoomInfo>>> = RefCell::new(None);
     static PENDING_NOTICE: RefCell<Option<String>> = RefCell::new(None);
+    static PENDING_PLAYER_COUNT: RefCell<Option<u32>> = RefCell::new(None);
+    static PENDING_ROOM_STARTED: RefCell<Option<bool>> = RefCell::new(None);
 }
 
 #[derive(Resource, Default)]
@@ -76,6 +78,7 @@ pub struct LobbyUI {
     pub is_host: bool,
     pub is_searching: bool,
     pub room_id: String,
+    pub room_started: bool,
     pub lobby_mode: LobbyMode,
     pub available_rooms: Vec<RoomInfo>,
     pub player_name: String,
@@ -259,8 +262,23 @@ fn pump_async_results(
             notice.timer = 0.0; // cause spawn next frame
         }
     });
+    // player count updates
+    PENDING_PLAYER_COUNT.with(|cell| {
+        if let Some(count) = cell.borrow_mut().take() {
+            if let Ok(mut ui) = lobby_q.single_mut() {
+                ui.current_players = count;
+            }
+        }
+    });
+    // room started updates
+    PENDING_ROOM_STARTED.with(|cell| {
+        if let Some(started) = cell.borrow_mut().take() {
+            if let Ok(mut ui) = lobby_q.single_mut() {
+                ui.room_started = started;
+            }
+        }
+    });
 }
-
 #[cfg(target_arch = "wasm32")]
 fn http_base() -> String {
     // Build http(s) base from current location
@@ -1030,7 +1048,38 @@ fn handle_lobby_input(
                                 lobby_ui.is_host = false;
                                 lobby_ui.lobby_mode = LobbyMode::InRoom;
                                 lobby_ui.is_searching = false;
+                                lobby_ui.current_players = lobby_ui.current_players.max(2);
                                 info!("🚪 Joined room: {}", lobby_ui.room_id);
+                                #[cfg(target_arch = "wasm32")]
+                                {
+                                    use wasm_bindgen_futures::spawn_local;
+                                    use serde::Serialize;
+                                    let room_id = lobby_ui.room_id.clone();
+                                    let player_name = lobby_ui.player_name.clone();
+                                    spawn_local(async move {
+                                        #[derive(Serialize)]
+                                        struct JoinReq<'a> { player_name: &'a str }
+                                        let url = format!("{}/lobby/api/rooms/{}/join", http_base(), room_id);
+                                        let body = serde_json::to_string(&JoinReq { player_name: &player_name }).unwrap();
+                                        match fetch_json(&url, "POST", Some(body)).await {
+                                            Ok(resp) => {
+                                                let resp: web_sys::Response = resp.dyn_into().unwrap();
+                                                if resp.ok() {
+                                                    match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap()).await {
+                                                        Ok(js) => {
+                                                            let room: ServerLobbyRoom = serde_wasm_bindgen::from_value(js).unwrap();
+                                                            PENDING_PLAYER_COUNT.with(|cell| cell.replace(Some(room.current_players)));
+                                                        }
+                                                        Err(e) => web_sys::console::error_1(&e),
+                                                    }
+                                                } else {
+                                                    web_sys::console::error_1(&format!("Join failed http {}", resp.status()).into());
+                                                }
+                                            }
+                                            Err(e) => web_sys::console::error_1(&e),
+                                        }
+                                    });
+                                }
                             }
                         }
                         *color = BackgroundColor(Color::srgb(0.1, 0.3, 0.5));
@@ -1042,6 +1091,27 @@ fn handle_lobby_input(
                         *color = BackgroundColor(Color::srgb(0.2, 0.2, 0.2));
                     } else if start_btn.is_some() {
                         info!("🚀 Starting matchmaking...");
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            use wasm_bindgen_futures::spawn_local;
+                            if let Ok(lobby_ui) = lobby_ui_query.single() {
+                                if !lobby_ui.room_id.is_empty() {
+                                    let room_id = lobby_ui.room_id.clone();
+                                    spawn_local(async move {
+                                        let url = format!("{}/lobby/api/rooms/{}/start", http_base(), room_id);
+                                        match fetch_json(&url, "POST", None).await {
+                                            Ok(resp) => {
+                                                let resp: web_sys::Response = resp.dyn_into().unwrap();
+                                                if !resp.ok() {
+                                                    web_sys::console::error_1(&format!("Failed to mark room started, status {}", resp.status()).into());
+                                                }
+                                            }
+                                            Err(e) => web_sys::console::error_1(&e),
+                                        }
+                                    });
+                                }
+                            }
+                        }
                         lobby_events.write(LobbyEvent::StartMatchmaking);
                         *color = BackgroundColor(Color::srgb(0.1, 0.5, 0.1));
                     } else if leave_btn.is_some() {
