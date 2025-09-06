@@ -52,7 +52,7 @@ impl Plugin for ClientPlugin {
                 matchmaker_url,
                 fake_client_ip: None,
                 game_name: "voidloop-quest".into(),
-                game_version: "v0.0.1".into(),
+                game_version: "0".into(),
             });
         }
 
