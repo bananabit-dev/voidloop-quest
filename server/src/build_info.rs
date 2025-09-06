@@ -56,3 +56,30 @@ impl Default for BuildInfo {
         Self::get()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_info_creation() {
+        let build_info = BuildInfo::get();
+        
+        // Verify that build info can be created without panicking
+        assert!(!build_info.package_version.is_empty());
+        assert!(!build_info.git_sha.is_empty());
+        assert!(!build_info.git_branch.is_empty());
+        
+        // Verify formatted log doesn't panic and contains expected content
+        let formatted = build_info.format_for_log();
+        assert!(formatted.contains("Build:"));
+        assert!(formatted.contains("Git:"));
+        assert!(formatted.contains("Rust:"));
+        
+        // Print build info for verification during development
+        println!("Build Info: {}", formatted);
+        println!("Git SHA: {}", build_info.git_sha);
+        println!("Git Branch: {}", build_info.git_branch);
+        println!("Build Time: {}", build_info.build_timestamp);
+    }
+}
