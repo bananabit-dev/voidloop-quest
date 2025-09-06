@@ -179,12 +179,12 @@ fn manage_room_lifecycle(
 pub struct ServerMetadata {
     pub certificate_digest: Option<String>,
     pub fqdn: Option<String>,
-    pub build_info: BuildInfo,
+    pub build_info: ServerBuildInfo,
     pub startup_time: f64,
 }
 
 #[derive(Debug, Clone)]
-pub struct BuildInfo {
+pub struct ServerBuildInfo {
     pub git_sha: String,
     pub git_branch: String,
     pub build_timestamp: String,
@@ -197,7 +197,7 @@ impl ServerMetadata {
         Self {
             certificate_digest: env::var("LIGHTYEAR_CERTIFICATE_DIGEST").ok(),
             fqdn: env::var("SERVER_FQDN").ok(),
-            build_info: BuildInfo {
+            build_info: ServerBuildInfo {
                 git_sha: env!("VERGEN_GIT_SHA").to_string(),
                 git_branch: env!("VERGEN_GIT_BRANCH").to_string(),
                 build_timestamp: env!("VERGEN_BUILD_TIMESTAMP").to_string(),
@@ -370,8 +370,8 @@ fn log_server_status(
         info!("📊 Server Status Report:");
         info!("   Uptime: {:.1} minutes", current_time / 60.0);
         info!("   Active Rooms: {}", room_registry.rooms.len());
-        info!("   Build: {}", build_info.format_for_log());
-        info!("   Git SHA: {} ({})", build_info.git_sha, build_info.git_branch);
+        info!("   Build: {}", (&*build_info).format_for_log());
+        info!("   Git SHA: {} ({})", (&*build_info).git_sha, (&*build_info).git_branch);
         
         // Log room details if any exist
         if !room_registry.rooms.is_empty() {
