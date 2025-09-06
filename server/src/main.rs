@@ -3,6 +3,7 @@ use clap::Parser;
 use server_plugin::ServerPlugin;
 
 mod build_info;
+mod certificate;
 mod server_plugin;
 
 #[derive(Parser, Debug)]
