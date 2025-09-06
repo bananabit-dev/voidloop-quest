@@ -3,8 +3,10 @@ use bevy::prelude::*;
 #[cfg(feature = "bevygap")]
 use bevygap_server_plugin::prelude::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
+#[cfg(feature = "bevygap")]
 use lightyear::prelude::*;
 use std::collections::HashMap;
+use std::env;
 
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 use crate::build_info::BuildInfo;
@@ -36,15 +38,21 @@ impl Plugin for ServerPlugin {
         // Room management
         app.insert_resource(RoomRegistry::new());
         app.insert_resource(MatchmakingQueue::new());
+
         
         // Build metadata for diagnostics
         app.insert_resource(BuildInfo::get());
 
+        app.insert_resource(ServerMetadata::new());
+
+
         // Server-specific systems
-        app.add_systems(Startup, setup_world);
+        app.add_systems(Startup, (setup_world, setup_server_metadata));
 
         // Player management system - handles spawning/despawning players
+
         app.add_systems(Update, (handle_player_management, manage_room_lifecycle, log_server_status));
+
 
         // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
         // Example: Game rules, scoring, AI, matchmaking logic, etc.
@@ -163,6 +171,91 @@ fn manage_room_lifecycle(
     for room_id in rooms_to_remove {
         room_registry.rooms.remove(&room_id);
         info!("Removed empty room: {}", room_id);
+    }
+}
+
+// Server metadata resource - stores server information for diagnostics and client verification
+#[derive(Resource, Debug, Clone)]
+pub struct ServerMetadata {
+    pub certificate_digest: Option<String>,
+    pub fqdn: Option<String>,
+    pub build_info: BuildInfo,
+    pub startup_time: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BuildInfo {
+    pub git_sha: String,
+    pub git_branch: String,
+    pub build_timestamp: String,
+    pub rustc_version: String,
+    pub target_triple: String,
+}
+
+impl ServerMetadata {
+    pub fn new() -> Self {
+        Self {
+            certificate_digest: env::var("LIGHTYEAR_CERTIFICATE_DIGEST").ok(),
+            fqdn: env::var("SERVER_FQDN").ok(),
+            build_info: BuildInfo {
+                git_sha: env!("VERGEN_GIT_SHA").to_string(),
+                git_branch: env!("VERGEN_GIT_BRANCH").to_string(),
+                build_timestamp: env!("VERGEN_BUILD_TIMESTAMP").to_string(),
+                rustc_version: env!("VERGEN_RUSTC_SEMVER").to_string(),
+                target_triple: env!("VERGEN_CARGO_TARGET_TRIPLE").to_string(),
+            },
+            startup_time: 0.0,
+        }
+    }
+
+    /// Get metadata as a formatted string for logging/debugging
+    pub fn to_debug_string(&self) -> String {
+        format!(
+            "ServerMetadata {{ git_sha: {}, build_time: {}, cert_digest: {}, fqdn: {}, uptime: {:.1}s }}",
+            self.build_info.git_sha,
+            self.build_info.build_timestamp,
+            self.certificate_digest.as_deref().unwrap_or("None"),
+            self.fqdn.as_deref().unwrap_or("None"),
+            self.startup_time
+        )
+    }
+}
+
+// Initial setup system for server metadata
+fn setup_server_metadata(mut metadata: ResMut<ServerMetadata>, time: Res<Time>) {
+    metadata.startup_time = time.elapsed_secs_f64();
+
+    info!("🔧 Server Metadata Initialized:");
+    info!("  📋 Git SHA: {}", metadata.build_info.git_sha);
+    info!("  🌳 Git Branch: {}", metadata.build_info.git_branch);
+    info!("  ⏰ Build Time: {}", metadata.build_info.build_timestamp);
+    info!("  🦀 Rust Version: {}", metadata.build_info.rustc_version);
+    info!("  🎯 Target: {}", metadata.build_info.target_triple);
+
+    if let Some(ref digest) = metadata.certificate_digest {
+        info!("  🔐 Certificate Digest: {}", digest);
+    } else {
+        info!("  🔐 Certificate Digest: Not configured");
+    }
+
+    if let Some(ref fqdn) = metadata.fqdn {
+        info!("  🌐 Server FQDN: {}", fqdn);
+    } else {
+        info!("  🌐 Server FQDN: Not configured");
+    }
+
+    info!("  🚀 Startup Time: {:.3}s", metadata.startup_time);
+}
+
+// Update system for server metadata - runs periodically for diagnostics
+fn update_server_metadata(metadata: Res<ServerMetadata>, time: Res<Time>) {
+    // Log metadata every 300 seconds (5 minutes) for diagnostics
+    let uptime = time.elapsed_secs_f64() - metadata.startup_time;
+    if uptime > 0.0 && (uptime % 300.0) < 0.1 {
+        info!(
+            "📊 Server Status - Uptime: {:.1}s, Git SHA: {}",
+            uptime, metadata.build_info.git_sha
+        );
     }
 }
 
