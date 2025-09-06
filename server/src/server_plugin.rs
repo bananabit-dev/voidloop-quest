@@ -1,3 +1,4 @@
+// Simple room management that works locally for now
 use bevy::prelude::*;
 #[cfg(feature = "bevygap")]
 use bevygap_server_plugin::prelude::BevygapServerPlugin;
@@ -9,9 +10,16 @@ use std::env;
 
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 use crate::build_info::BuildInfo;
-use crate::certificate::CertificateDigest;
 
-pub struct ServerPlugin;
+pub struct ServerPlugin {
+    pub cert_digest: Option<String>,
+}
+
+impl ServerPlugin {
+    pub fn new(cert_digest: Option<String>) -> Self {
+        Self { cert_digest }
+    }
+}
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
@@ -41,7 +49,9 @@ impl Plugin for ServerPlugin {
 
         
         // Build metadata for diagnostics
-        app.insert_resource(ServerMetadata::new());
+        app.insert_resource(BuildInfo::get());
+
+        app.insert_resource(ServerMetadata::new(self.cert_digest.clone()));
 
 
         // Server-specific systems
@@ -181,15 +191,12 @@ pub struct ServerMetadata {
     pub startup_time: f64,
 }
 
-
-
 impl ServerMetadata {
-    pub fn new() -> Self {
-        let build_info = BuildInfo::get();
+    pub fn new(cert_digest: Option<String>) -> Self {
         Self {
-            certificate_digest: CertificateDigest::generate(),
+            certificate_digest: cert_digest,
             fqdn: env::var("SERVER_FQDN").ok(),
-            build_info,
+            build_info: BuildInfo::get(),
             startup_time: 0.0,
         }
     }
@@ -200,7 +207,7 @@ impl ServerMetadata {
             "ServerMetadata {{ git_sha: {}, build_time: {}, cert_digest: {}, fqdn: {}, uptime: {:.1}s }}",
             self.build_info.git_sha,
             self.build_info.build_timestamp,
-            self.certificate_digest.as_deref().unwrap_or("None"),
+            self.certificate_digest.as_deref().map(|d| &d[..16]).unwrap_or("None"),
             self.fqdn.as_deref().unwrap_or("None"),
             self.startup_time
         )
@@ -248,11 +255,11 @@ fn setup_server_metadata(mut metadata: ResMut<ServerMetadata>, time: Res<Time>) 
     info!("  🎯 Target: {}", metadata.build_info.target_triple);
 
     if let Some(ref digest) = metadata.certificate_digest {
-        info!("  🔐 Certificate Digest: {}", digest);
+        info!("  🔐 Certificate Digest: {}...", &digest[..16]);
         info!("  📄 Digest available for WebTransport clients and API responses");
     } else {
         warn!("  🔐 Certificate Digest: Not available - WebTransport may not work");
-        warn!("  💡 Consider setting LIGHTYEAR_CERTIFICATE_DIGEST or providing a certificate file");
+        warn!("  💡 Consider setting ARBITRIUM_PUBLIC_IP, SELF_SIGNED_SANS, or LIGHTYEAR_CERTIFICATE_DIGEST");
     }
 
     if let Some(ref fqdn) = metadata.fqdn {
@@ -262,9 +269,6 @@ fn setup_server_metadata(mut metadata: ResMut<ServerMetadata>, time: Res<Time>) 
     }
 
     info!("  🚀 Startup Time: {:.3}s", metadata.startup_time);
-    
-    // Log the digest to the debug string for easier access
-    debug!("📊 Server metadata: {}", metadata.to_debug_string());
 }
 
 // Update system for server metadata - runs periodically for diagnostics
@@ -273,8 +277,10 @@ fn update_server_metadata(metadata: Res<ServerMetadata>, time: Res<Time>) {
     let uptime = time.elapsed_secs_f64() - metadata.startup_time;
     if uptime > 0.0 && (uptime % 300.0) < 0.1 {
         info!(
-            "📊 Server Status - Uptime: {:.1}s, Git SHA: {}",
-            uptime, metadata.build_info.git_sha
+            "📊 Server Status - Uptime: {:.1}s, Git SHA: {}, Cert: {}",
+            uptime, 
+            metadata.build_info.git_sha,
+            metadata.certificate_digest.as_deref().map(|d| &d[..8]).unwrap_or("None")
         );
     }
 }
@@ -394,7 +400,7 @@ fn log_server_status(
         info!("   Git SHA: {} ({})", metadata.build_info.git_sha, metadata.build_info.git_branch);
         
         if let Some(digest) = metadata.get_certificate_digest() {
-            info!("   Certificate Digest: {} ({})", &digest[..16], "available for WebTransport");
+            info!("   Certificate Digest: {}... (available for WebTransport)", &digest[..16]);
         } else {
             warn!("   Certificate Digest: Not available (WebTransport may not work)");
         }
