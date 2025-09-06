@@ -8,8 +8,8 @@ use lightyear::prelude::*;
 use std::collections::HashMap;
 use std::env;
 
-use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 use crate::build_info::BuildInfo;
+use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 
 pub struct ServerPlugin;
 
@@ -39,20 +39,24 @@ impl Plugin for ServerPlugin {
         app.insert_resource(RoomRegistry::new());
         app.insert_resource(MatchmakingQueue::new());
 
-        
         // Build metadata for diagnostics
         app.insert_resource(BuildInfo::get());
 
         app.insert_resource(ServerMetadata::new());
-
 
         // Server-specific systems
         app.add_systems(Startup, (setup_world, setup_server_metadata));
 
         // Player management system - handles spawning/despawning players
 
-        app.add_systems(Update, (handle_player_management, manage_room_lifecycle, log_server_status));
-
+        app.add_systems(
+            Update,
+            (
+                handle_player_management,
+                manage_room_lifecycle,
+                log_server_status,
+            ),
+        );
 
         // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
         // Example: Game rules, scoring, AI, matchmaking logic, etc.
@@ -183,32 +187,18 @@ pub struct ServerMetadata {
     pub startup_time: f64,
 }
 
-#[derive(Debug, Clone)]
-pub struct BuildInfo {
-    pub git_sha: String,
-    pub git_branch: String,
-    pub build_timestamp: String,
-    pub rustc_version: String,
-    pub target_triple: String,
-}
-
 impl ServerMetadata {
     pub fn new() -> Self {
         Self {
             certificate_digest: env::var("LIGHTYEAR_CERTIFICATE_DIGEST").ok(),
             fqdn: env::var("SERVER_FQDN").ok(),
-            build_info: BuildInfo {
-                git_sha: env!("VERGEN_GIT_SHA").to_string(),
-                git_branch: env!("VERGEN_GIT_BRANCH").to_string(),
-                build_timestamp: env!("VERGEN_BUILD_TIMESTAMP").to_string(),
-                rustc_version: env!("VERGEN_RUSTC_SEMVER").to_string(),
-                target_triple: env!("VERGEN_CARGO_TARGET_TRIPLE").to_string(),
-            },
+            build_info: BuildInfo::get(),
             startup_time: 0.0,
         }
     }
 
     /// Get metadata as a formatted string for logging/debugging
+    #[allow(dead_code)]
     pub fn to_debug_string(&self) -> String {
         format!(
             "ServerMetadata {{ git_sha: {}, build_time: {}, cert_digest: {}, fqdn: {}, uptime: {:.1}s }}",
@@ -248,6 +238,7 @@ fn setup_server_metadata(mut metadata: ResMut<ServerMetadata>, time: Res<Time>) 
 }
 
 // Update system for server metadata - runs periodically for diagnostics
+#[allow(dead_code)]
 fn update_server_metadata(metadata: Res<ServerMetadata>, time: Res<Time>) {
     // Log metadata every 300 seconds (5 minutes) for diagnostics
     let uptime = time.elapsed_secs_f64() - metadata.startup_time;
@@ -266,6 +257,7 @@ pub struct RoomRegistry {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct RoomData {
     pub room_id: String,
     pub host_name: String,
@@ -277,11 +269,13 @@ pub struct RoomData {
 }
 
 #[derive(Resource, Default)]
+#[allow(dead_code)]
 pub struct MatchmakingQueue {
     pub queue: HashMap<String, Vec<MatchmakingPlayer>>, // game_mode -> players
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct MatchmakingPlayer {
     pub player_id: String,
     pub join_time: f64,
@@ -294,6 +288,7 @@ impl RoomRegistry {
         }
     }
 
+    #[allow(dead_code)]
     pub fn create_room(
         &mut self,
         room_id: String,
@@ -313,6 +308,7 @@ impl RoomRegistry {
         room_data
     }
 
+    #[allow(dead_code)]
     pub fn get_room_list(&self) -> Vec<RoomInfo> {
         self.rooms
             .values()
@@ -334,14 +330,16 @@ impl MatchmakingQueue {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_player(&mut self, game_mode: String, player_id: String, join_time: f64) {
-        let queue = self.queue.entry(game_mode).or_insert_with(Vec::new);
+        let queue = self.queue.entry(game_mode).or_default();
         queue.push(MatchmakingPlayer {
             player_id,
             join_time,
         });
     }
 
+    #[allow(dead_code)]
     pub fn try_create_match(&mut self, game_mode: &str) -> Option<Vec<MatchmakingPlayer>> {
         if let Some(queue) = self.queue.get_mut(game_mode) {
             if queue.len() >= 4 {
@@ -362,22 +360,28 @@ fn log_server_status(
     mut last_log: Local<f32>,
 ) {
     let current_time = time.elapsed_secs();
-    
+
     // Log server status every 5 minutes (300 seconds)
     if current_time - *last_log >= 300.0 {
         *last_log = current_time;
-        
+
         info!("📊 Server Status Report:");
         info!("   Uptime: {:.1} minutes", current_time / 60.0);
         info!("   Active Rooms: {}", room_registry.rooms.len());
         info!("   Build: {}", build_info.format_for_log());
-        info!("   Git SHA: {} ({})", build_info.git_sha, build_info.git_branch);
-        
+        info!(
+            "   Git SHA: {} ({})",
+            build_info.git_sha, build_info.git_branch
+        );
+
         // Log room details if any exist
         if !room_registry.rooms.is_empty() {
             info!("   Room Details:");
             for (room_id, room_data) in &room_registry.rooms {
-                info!("     Room {}: {} players", room_id, room_data.current_players);
+                info!(
+                    "     Room {}: {} players",
+                    room_id, room_data.current_players
+                );
             }
         }
     }
