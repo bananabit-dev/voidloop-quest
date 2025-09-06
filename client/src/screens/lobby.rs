@@ -12,6 +12,7 @@ use {
     wasm_bindgen::JsCast,
     web_sys::{RequestInit, RequestMode, Request},
     std::cell::RefCell,
+    serde::{Deserialize, Serialize},
 };
 // Placeholder EdgegapLobbyState for compilation
 #[derive(Resource, Default)]
@@ -1195,7 +1196,7 @@ fn handle_lobby_events(
     mut lobby_ui_query: Query<&mut LobbyUI>,
     mut next_state: ResMut<NextState<AppState>>,
     mut room_registry: ResMut<ClientRoomRegistry>,
-    mut commands: Commands,
+    #[allow(unused_mut)] mut commands: Commands,
 ) {
     let mut lobby_ui = if let Ok(ui) = lobby_ui_query.single_mut() {
         ui
