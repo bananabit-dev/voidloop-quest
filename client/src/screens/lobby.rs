@@ -15,6 +15,7 @@ use {
 };
 // Placeholder EdgegapLobbyState for compilation
 #[derive(Resource, Default)]
+#[allow(dead_code)]
 pub struct EdgegapLobbyState {
     pub is_deploying: bool,
     pub lobby_name: Option<String>,
@@ -47,6 +48,7 @@ pub struct UiNotice { pub msg: Option<String>, pub timer: f32 }
 struct NoticeText;
 
 #[derive(Resource, Clone, Debug)]
+#[allow(dead_code)]
 pub struct LobbyConfig {
     pub domain: String,           // "voidloop.quest"
     pub matchmaker_url: String,   // "wss://voidloop.quest/matchmaker/ws"
@@ -71,6 +73,7 @@ impl Default for LobbyConfig {
 
 // 🏠 Lobby UI component
 #[derive(Component, Default)]
+#[allow(dead_code)]
 pub struct LobbyUI {
     pub current_players: u32,
     pub selected_mode: String,
@@ -132,6 +135,7 @@ struct ServerLobbyRoom {
 
 // 🌟 Lobby events
 #[derive(Event)]
+#[allow(dead_code)]
 pub enum LobbyEvent {
     PlayerJoined(u32),
     PlayerLeft(u32),

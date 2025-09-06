@@ -169,6 +169,7 @@ pub struct RoomRegistry {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct RoomData {
     pub room_id: String,
     pub host_name: String,
@@ -180,11 +181,13 @@ pub struct RoomData {
 }
 
 #[derive(Resource, Default)]
+#[allow(dead_code)]
 pub struct MatchmakingQueue {
     pub queue: HashMap<String, Vec<MatchmakingPlayer>>, // game_mode -> players
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct MatchmakingPlayer {
     pub player_id: String,
     pub join_time: f64,
@@ -197,6 +200,7 @@ impl RoomRegistry {
         }
     }
 
+    #[allow(dead_code)]
     pub fn create_room(
         &mut self,
         room_id: String,
@@ -216,6 +220,7 @@ impl RoomRegistry {
         room_data
     }
 
+    #[allow(dead_code)]
     pub fn get_room_list(&self) -> Vec<RoomInfo> {
         self.rooms
             .values()
@@ -237,14 +242,16 @@ impl MatchmakingQueue {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_player(&mut self, game_mode: String, player_id: String, join_time: f64) {
-        let queue = self.queue.entry(game_mode).or_insert_with(Vec::new);
+        let queue = self.queue.entry(game_mode).or_default();
         queue.push(MatchmakingPlayer {
             player_id,
             join_time,
         });
     }
 
+    #[allow(dead_code)]
     pub fn try_create_match(&mut self, game_mode: &str) -> Option<Vec<MatchmakingPlayer>> {
         if let Some(queue) = self.queue.get_mut(game_mode) {
             if queue.len() >= 4 {

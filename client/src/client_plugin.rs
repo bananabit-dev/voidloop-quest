@@ -108,7 +108,7 @@ fn get_matchmaker_url() -> String {
 fn setup_camera(mut commands: Commands) {
     // Spawn 2D camera with UI support - needed for both lobby UI and game
     commands.spawn((
-        Camera2d::default(),
+        Camera2d,
         Camera {
             clear_color: ClearColorConfig::Default,
             ..default()
