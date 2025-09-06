@@ -151,25 +151,15 @@ services:
         max-file: "3"
 
   lobby:
-    image: ${LOBBY_IMAGE}
+    build:
+      context: .
+      dockerfile: lobby-service/Dockerfile
     restart: unless-stopped
-    environment:
-      - DATABASE_URL=postgres://lobby:${DB_PASSWORD}@postgres:5432/voidloop_lobby
-      - JWT_SECRET=${JWT_SECRET}
-      - NATS_HOST=nats
-      - NATS_USER=lobby
-      - NATS_PASSWORD=${NATS_PASSWORD}
-      - NATS_CA=/nats-ca/rootCA.pem
-    volumes:
-      - /opt/voidloop/nats-config/rootCA.pem:/nats-ca/rootCA.pem:ro
-    depends_on:
-      - postgres
-      - nats
     networks: [internal, public]
     read_only: true
     tmpfs: ["/tmp"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/ || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
       interval: 15s
       timeout: 3s
       retries: 5
