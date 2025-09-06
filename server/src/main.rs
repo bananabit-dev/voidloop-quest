@@ -20,7 +20,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let build_info = build_info::BuildInfo::get();
-    
+
     // Display the logo at startup
 
     println!(
