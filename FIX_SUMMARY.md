@@ -3,7 +3,7 @@
 ## Problem
 The WASM client was getting 404 errors when trying to connect to bevygap services:
 - `GET wss://voidloop.quest/matchmaker/ws` → HTTP/1.1 404 Not Found
-- `POST https://voidloop.quest/hook/api/rooms` → HTTP/2 404 Not Found
+- `POST https://voidloop.quest/lobby/api/rooms` → HTTP/2 404 Not Found
 
 ## Root Cause
 The WASM build script used `--no-default-features` which disabled the `bevygap` feature, but the lobby UI code still attempted to make HTTP requests to bevygap API endpoints without checking if the feature was enabled.
@@ -31,7 +31,7 @@ The WASM build script used `--no-default-features` which disabled the `bevygap` 
 #[cfg(target_arch = "wasm32")]
 {
     spawn_local(async move {
-        let url = format!("{}/hook/api/rooms", http_base());
+        let url = format!("{}/lobby/api/rooms", http_base());
         // ... HTTP request code
     });
 }
@@ -40,7 +40,7 @@ The WASM build script used `--no-default-features` which disabled the `bevygap` 
 #[cfg(all(target_arch = "wasm32", feature = "bevygap"))]
 {
     spawn_local(async move {
-        let url = format!("{}/hook/api/rooms", http_base());
+        let url = format!("{}/lobby/api/rooms", http_base());
         // ... HTTP request code
     });
 }
