@@ -9,18 +9,35 @@ mod server_plugin;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Host address to bind to
+    #[arg(long, default_value = "0.0.0.0")]
+    host: String,
+
     /// Port to listen on
-    #[arg(short, long, default_value_t = 5001)]
+    #[arg(short, long, default_value_t = 6420)]
     port: u16,
+
+    /// Transport port for WebTransport
+    #[arg(long, default_value_t = 6421)]
+    transport_port: u16,
 
     /// Transport type (websocket or webtransport)
     #[arg(short, long, default_value = "websocket")]
     transport: String,
+
+    /// NATS certificate contents (for Edgegap deployment workaround)
+    #[arg(long)]
+    ca_contents: Option<String>,
 }
 
 fn main() {
     let args = Args::parse();
     let build_info = build_info::BuildInfo::get();
+    
+    // Handle NATS certificate contents if provided (Edgegap workaround)
+    if let Some(ref ca_contents) = args.ca_contents {
+        handle_ca_contents(ca_contents);
+    }
     
     // Generate certificate digest using the same approach as bevygap-spaceships
     let cert_digest = generate_certificate_digest();
@@ -60,7 +77,9 @@ fn main() {
     "#
     );
     info!("🎮 Simple Platformer Server starting...");
-    info!("📡 Listening on port {}", args.port);
+    info!("📡 Listening on {}:{}", args.host, args.port);
+    info!("🚢 Transport port: {}", args.transport_port);
+    info!("🔄 Transport type: {}", args.transport);
     info!("📋 {}", build_info.format_for_log());
     info!("🔧 Build Details:");
     info!("   Git SHA: {}", build_info.git_sha);
@@ -160,4 +179,34 @@ fn create_self_signed_cert(sans: &str) -> Result<Vec<u8>, Box<dyn std::error::Er
     let cert_der = cert.serialize_der()?;
     
     Ok(cert_der)
+}
+
+/// Handle CA certificate contents by writing them to a temporary file and setting NATS_CA env var
+/// This is a workaround for Edgegap's 255-byte environment variable limit
+fn handle_ca_contents(ca_contents: &str) {
+    use std::fs;
+    use std::io::Write;
+    
+    info!("🔐 Processing CA certificate contents...");
+    
+    // Create a temporary file for the certificate
+    let temp_path = "/tmp/nats_ca.pem";
+    
+    match fs::File::create(temp_path) {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(ca_contents.as_bytes()) {
+                warn!("🔐 Failed to write CA certificate to temporary file: {}", e);
+                return;
+            }
+            
+            info!("🔐 CA certificate written to: {}", temp_path);
+            
+            // Set the NATS_CA environment variable to point to the temporary file
+            env::set_var("NATS_CA", temp_path);
+            info!("🔐 NATS_CA environment variable set to: {}", temp_path);
+        }
+        Err(e) => {
+            warn!("🔐 Failed to create temporary file for CA certificate: {}", e);
+        }
+    }
 }
