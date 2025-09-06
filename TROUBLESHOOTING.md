@@ -2,6 +2,48 @@
 
 This document addresses common build issues for Voidloop Quest development.
 
+## 🚨 Runtime Issues
+
+### 🔴 "Invalid JSON value <!DOCTYPE" when clicking "Join Room"
+
+**Symptoms:**
+- Client shows error when clicking "Join Room" button
+- Browser console shows JSON parsing error with HTML content starting with `<!DOCTYPE`
+- Network requests to `/hook/api/rooms` return HTML error pages instead of JSON
+
+**Root Cause:**
+The client expects REST API endpoints at `/hook/api/rooms` but no HTTP server was running to handle these requests.
+
+**Solution:**
+Ensure the `lobby-service` is running and properly configured:
+
+1. **Local Development:**
+```bash
+# Start the lobby service
+cargo run -p lobby-service
+
+# Test the endpoints
+curl http://localhost:3001/api/rooms
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"host_name":"test","game_mode":"classic","max_players":4}' \
+  http://localhost:3001/api/rooms
+```
+
+2. **Production Deployment:**
+```bash
+# Ensure lobby service is running in docker-compose
+docker-compose ps
+docker-compose logs lobby
+
+# Test through proxy (after deployment)
+curl https://your-domain.com/hook/api/rooms
+```
+
+**Prevention:**
+- Always deploy the complete stack including the lobby service
+- Verify all services are healthy before enabling client access
+- Monitor lobby service logs for any startup issues
+
 ## ❌ Common Build Errors
 
 ### `libudev-sys` Build Error
