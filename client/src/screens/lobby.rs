@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::BevygapConnectExt;
@@ -92,6 +91,7 @@ impl LobbyUI {
             is_host: false,
             is_searching: false,
             room_id: String::new(),
+            room_started: false,
             lobby_mode: LobbyMode::Main,
             available_rooms: Vec::new(),
             player_name: format!("Player{}", rand::random::<u32>() % 1000),
