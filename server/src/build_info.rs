@@ -13,23 +13,26 @@ pub struct BuildInfo {
     pub target_triple: &'static str,
     /// Rust compiler version
     pub rustc_version: &'static str,
-    /// Cargo version
-    pub cargo_version: &'static str,
     /// Package version
     pub package_version: &'static str,
+    /// Git commit author
+    pub git_commit_author: &'static str,
+    /// System info
+    pub system_info: &'static str,
 }
 
 impl BuildInfo {
     /// Get the build information from environment variables set by vergen
     pub fn get() -> Self {
         Self {
-            git_sha: env!("VERGEN_GIT_SHA"),
-            git_branch: env!("VERGEN_GIT_BRANCH"),
-            build_timestamp: env!("VERGEN_BUILD_TIMESTAMP"),
-            target_triple: env!("VERGEN_CARGO_TARGET_TRIPLE"),
-            rustc_version: env!("VERGEN_RUSTC_SEMVER"),
-            cargo_version: env!("VERGEN_CARGO_SEMVER"),
+            git_sha: option_env!("VERGEN_GIT_SHA").unwrap_or("unknown"),
+            git_branch: option_env!("VERGEN_GIT_BRANCH").unwrap_or("unknown"),
+            build_timestamp: option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or("unknown"),
+            target_triple: option_env!("VERGEN_CARGO_TARGET_TRIPLE").unwrap_or("unknown"),
+            rustc_version: option_env!("VERGEN_RUSTC_SEMVER").unwrap_or("unknown"),
             package_version: env!("CARGO_PKG_VERSION"),
+            git_commit_author: option_env!("VERGEN_GIT_COMMIT_AUTHOR_NAME").unwrap_or("unknown"),
+            system_info: option_env!("VERGEN_SYSINFO_OS_VERSION").unwrap_or("unknown"),
         }
     }
 
@@ -39,7 +42,7 @@ impl BuildInfo {
             "Build: {} ({}), Git: {} @ {}, Rust: {}, Target: {}",
             self.package_version,
             self.build_timestamp,
-            &self.git_sha[..8], // Shortened SHA
+            &self.git_sha[..std::cmp::min(8, self.git_sha.len())], // Shortened SHA
             self.git_branch,
             self.rustc_version,
             self.target_triple

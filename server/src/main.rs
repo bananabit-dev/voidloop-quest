@@ -62,6 +62,8 @@ fn main() {
     info!("   Git Branch: {}", build_info.git_branch);
     info!("   Build Time: {}", build_info.build_timestamp);
     info!("   Target: {}", build_info.target_triple);
+    info!("   Author: {}", build_info.git_commit_author);
+    info!("   System: {}", build_info.system_info);
 
     App::new().add_plugins(ServerPlugin).run();
 }
