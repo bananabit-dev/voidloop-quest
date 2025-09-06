@@ -25,6 +25,7 @@ fn main() {
     // Generate certificate digest using the same approach as bevygap-spaceships
     let cert_digest = generate_certificate_digest();
     
+
     // Display the logo at startup
 
     println!(
