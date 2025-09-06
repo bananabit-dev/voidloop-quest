@@ -8,11 +8,11 @@ use shared::RoomInfo;
 
 #[cfg(target_arch = "wasm32")]
 use {
-    wasm_bindgen_futures::spawn_local,
-    wasm_bindgen::JsCast,
-    web_sys::{RequestInit, RequestMode, Request},
-    std::cell::RefCell,
     serde::{Deserialize, Serialize},
+    std::cell::RefCell,
+    wasm_bindgen::JsCast,
+    wasm_bindgen_futures::spawn_local,
+    web_sys::{Request, RequestInit, RequestMode},
 };
 // Placeholder EdgegapLobbyState for compilation
 #[derive(Resource, Default)]
@@ -42,7 +42,10 @@ thread_local! {
 }
 
 #[derive(Resource, Default)]
-pub struct UiNotice { pub msg: Option<String>, pub timer: f32 }
+pub struct UiNotice {
+    pub msg: Option<String>,
+    pub timer: f32,
+}
 
 #[derive(Component)]
 struct NoticeText;
@@ -211,7 +214,10 @@ fn show_notice(
             .with_children(|p| {
                 p.spawn((
                     Text::new(notice.msg.clone().unwrap_or_default()),
-                    TextFont { font_size: 14.0, ..default() },
+                    TextFont {
+                        font_size: 14.0,
+                        ..default()
+                    },
                     TextColor(Color::srgb(1.0, 0.8, 0.2)),
                 ));
             })
@@ -232,10 +238,7 @@ fn show_notice(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn pump_async_results(
-    mut notice: ResMut<UiNotice>,
-    mut lobby_q: Query<&mut LobbyUI>,
-) {
+fn pump_async_results(mut notice: ResMut<UiNotice>, mut lobby_q: Query<&mut LobbyUI>) {
     // room created
     PENDING_ROOM_CREATED.with(|cell| {
         if let Some(room) = cell.borrow_mut().take() {
@@ -286,7 +289,11 @@ fn http_base() -> String {
     let window = web_sys::window().expect("no window");
     let loc = window.location();
     let protocol = loc.protocol().unwrap_or_else(|_| "http:".into());
-    let scheme = if protocol == "https:" { "https" } else { "http" };
+    let scheme = if protocol == "https:" {
+        "https"
+    } else {
+        "http"
+    };
     let host = loc.host().unwrap();
     format!("{}://{}", scheme, host)
 }
@@ -311,8 +318,6 @@ fn fetch_json(url: &str, method: &str, body: Option<String>) -> wasm_bindgen_fut
     let window = web_sys::window().unwrap();
     wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
 }
-
-
 
 // 🏠 Initialize lobby system
 fn setup_lobby_ui(mut commands: Commands, _asset_server: Res<AssetServer>) {
@@ -1053,28 +1058,54 @@ fn handle_lobby_input(
                                 info!("🚪 Joined room: {}", lobby_ui.room_id);
                                 #[cfg(target_arch = "wasm32")]
                                 {
-                                    use wasm_bindgen_futures::spawn_local;
                                     use serde::Serialize;
+                                    use wasm_bindgen_futures::spawn_local;
                                     let room_id = lobby_ui.room_id.clone();
                                     let player_name = lobby_ui.player_name.clone();
                                     spawn_local(async move {
                                         #[derive(Serialize)]
-                                        struct JoinReq<'a> { player_name: &'a str }
-                                        let url = format!("{}/lobby/api/rooms/{}/join", http_base(), room_id);
-                                        let body = serde_json::to_string(&JoinReq { player_name: &player_name }).unwrap();
+                                        struct JoinReq<'a> {
+                                            player_name: &'a str,
+                                        }
+                                        let url = format!(
+                                            "{}/lobby/api/rooms/{}/join",
+                                            http_base(),
+                                            room_id
+                                        );
+                                        let body = serde_json::to_string(&JoinReq {
+                                            player_name: &player_name,
+                                        })
+                                        .unwrap();
                                         match fetch_json(&url, "POST", Some(body)).await {
                                             Ok(resp) => {
-                                                let resp: web_sys::Response = resp.dyn_into().unwrap();
+                                                let resp: web_sys::Response =
+                                                    resp.dyn_into().unwrap();
                                                 if resp.ok() {
-                                                    match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap()).await {
+                                                    match wasm_bindgen_futures::JsFuture::from(
+                                                        resp.json().unwrap(),
+                                                    )
+                                                    .await
+                                                    {
                                                         Ok(js) => {
-                                                            let room: ServerLobbyRoom = serde_wasm_bindgen::from_value(js).unwrap();
-                                                            PENDING_PLAYER_COUNT.with(|cell| cell.replace(Some(room.current_players)));
+                                                            let room: ServerLobbyRoom =
+                                                                serde_wasm_bindgen::from_value(js)
+                                                                    .unwrap();
+                                                            PENDING_PLAYER_COUNT.with(|cell| {
+                                                                cell.replace(Some(
+                                                                    room.current_players,
+                                                                ))
+                                                            });
                                                         }
                                                         Err(e) => web_sys::console::error_1(&e),
                                                     }
                                                 } else {
-                                                    web_sys::console::error_1(&format!("Join failed http {}", resp.status()).into());
+                                                    web_sys::console::error_1(
+                                                        &format!(
+                                                            "Join failed http {}",
+                                                            resp.status()
+                                                        )
+                                                        .into(),
+                                                    );
                                                 }
                                             }
                                             Err(e) => web_sys::console::error_1(&e),
@@ -1099,10 +1130,15 @@ fn handle_lobby_input(
                                 if !lobby_ui.room_id.is_empty() {
                                     let room_id = lobby_ui.room_id.clone();
                                     spawn_local(async move {
-                                        let url = format!("{}/lobby/api/rooms/{}/start", http_base(), room_id);
+                                        let url = format!(
+                                            "{}/lobby/api/rooms/{}/start",
+                                            http_base(),
+                                            room_id
+                                        );
                                         match fetch_json(&url, "POST", None).await {
                                             Ok(resp) => {
-                                                let resp: web_sys::Response = resp.dyn_into().unwrap();
+                                                let resp: web_sys::Response =
+                                                    resp.dyn_into().unwrap();
                                                 if !resp.ok() {
                                                     web_sys::console::error_1(&format!("Failed to mark room started, status {}", resp.status()).into());
                                                 }
@@ -1231,7 +1267,7 @@ fn handle_lobby_events(
             LobbyEvent::StartMatchmaking => {
                 info!("🔍 Starting matchmaking...");
                 lobby_ui.is_searching = true;
-                
+
                 // Simplified matchmaking - just trigger bevygap connection
                 #[cfg(feature = "bevygap")]
                 {
@@ -1263,20 +1299,36 @@ fn handle_lobby_events(
                     spawn_local(async move {
                         let url = format!("{}/lobby/api/rooms", http_base());
                         #[derive(Serialize)]
-                        struct CreateReq<'a> { host_name: &'a str, game_mode: &'a str, max_players: u32 }
-                        let body = serde_json::to_string(&CreateReq { host_name: &player_name, game_mode: &game_mode, max_players: 4 }).unwrap();
+                        struct CreateReq<'a> {
+                            host_name: &'a str,
+                            game_mode: &'a str,
+                            max_players: u32,
+                        }
+                        let body = serde_json::to_string(&CreateReq {
+                            host_name: &player_name,
+                            game_mode: &game_mode,
+                            max_players: 4,
+                        })
+                        .unwrap();
                         match fetch_json(&url, "POST", Some(body)).await {
                             Ok(resp) => {
                                 let resp: web_sys::Response = resp.dyn_into().unwrap();
                                 if !resp.ok() {
                                     let status = resp.status();
-                                    web_sys::console::error_1(&format!("Create room failed http {}", status).into());
+                                    web_sys::console::error_1(
+                                        &format!("Create room failed http {}", status).into(),
+                                    );
                                     return;
                                 }
-                                match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap()).await {
+                                match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap())
+                                    .await
+                                {
                                     Ok(js) => {
-                                        let room: ServerLobbyRoom = serde_wasm_bindgen::from_value(js).unwrap();
-                                        web_sys::console::log_1(&format!("Room created {}", room.id).into());
+                                        let room: ServerLobbyRoom =
+                                            serde_wasm_bindgen::from_value(js).unwrap();
+                                        web_sys::console::log_1(
+                                            &format!("Room created {}", room.id).into(),
+                                        );
                                         PENDING_ROOM_CREATED.with(|cell| {
                                             cell.replace(Some(RoomInfo {
                                                 room_id: room.id,
@@ -1312,7 +1364,10 @@ fn handle_lobby_events(
                     lobby_ui.is_host = true;
                     lobby_ui.lobby_mode = LobbyMode::InRoom;
                     lobby_ui.is_searching = false;
-                    info!("🏠 Created local room: {} (bevygap disabled)", lobby_ui.room_id);
+                    info!(
+                        "🏠 Created local room: {} (bevygap disabled)",
+                        lobby_ui.room_id
+                    );
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -1348,29 +1403,38 @@ fn handle_lobby_events(
                         match fetch_json(&url, "GET", None).await {
                             Ok(resp) => {
                                 let resp: web_sys::Response = resp.dyn_into().unwrap();
-                                match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap()).await {
+                                match wasm_bindgen_futures::JsFuture::from(resp.json().unwrap())
+                                    .await
+                                {
                                     Ok(js) => {
-                                        let rooms: Vec<ServerLobbyRoom> = serde_wasm_bindgen::from_value(js).unwrap_or_default();
+                                        let rooms: Vec<ServerLobbyRoom> =
+                                            serde_wasm_bindgen::from_value(js).unwrap_or_default();
                                         let list: Vec<RoomInfo> = rooms
                                             .into_iter()
                                             .filter(|r| !r.started)
-                                            .map(|r| RoomInfo { 
-                                                room_id: r.id, 
-                                                current_players: r.current_players, 
-                                                max_players: r.max_players, 
-                                                host_name: r.host_name, 
-                                                game_mode: r.game_mode 
+                                            .map(|r| RoomInfo {
+                                                room_id: r.id,
+                                                current_players: r.current_players,
+                                                max_players: r.max_players,
+                                                host_name: r.host_name,
+                                                game_mode: r.game_mode,
                                             })
                                             .collect();
                                         PENDING_ROOM_LIST.with(|cell| cell.replace(Some(list)));
                                     }
                                     Err(e) => {
-                                        PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed loading rooms: {e:?}"))));
+                                        PENDING_NOTICE.with(|cell| {
+                                            cell.replace(Some(format!(
+                                                "Failed loading rooms: {e:?}"
+                                            )))
+                                        });
                                     }
                                 }
                             }
                             Err(e) => {
-                                PENDING_NOTICE.with(|cell| cell.replace(Some(format!("Failed http rooms: {e:?}"))));
+                                PENDING_NOTICE.with(|cell| {
+                                    cell.replace(Some(format!("Failed http rooms: {e:?}")))
+                                });
                             }
                         }
                     });
@@ -1379,7 +1443,10 @@ fn handle_lobby_events(
                 {
                     // Fallback for WASM builds without bevygap - use local room registry
                     lobby_ui.available_rooms = room_registry.rooms.clone();
-                    info!("📋 Loaded {} local rooms (bevygap disabled)", lobby_ui.available_rooms.len());
+                    info!(
+                        "📋 Loaded {} local rooms (bevygap disabled)",
+                        lobby_ui.available_rooms.len()
+                    );
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -1428,13 +1495,24 @@ fn handle_lobby_events(
                         spawn_local(async move {
                             let url = format!("{}/lobby/api/rooms/{}/leave", http_base(), room_id);
                             #[derive(Serialize)]
-                            struct LeaveReq<'a> { player_name: &'a str }
-                            let body = serde_json::to_string(&LeaveReq { player_name: &player_name }).unwrap();
+                            struct LeaveReq<'a> {
+                                player_name: &'a str,
+                            }
+                            let body = serde_json::to_string(&LeaveReq {
+                                player_name: &player_name,
+                            })
+                            .unwrap();
                             match fetch_json(&url, "POST", Some(body)).await {
                                 Ok(resp) => {
                                     let resp: web_sys::Response = resp.dyn_into().unwrap();
                                     if !resp.ok() {
-                                        web_sys::console::error_1(&format!("Failed to leave room, status {}", resp.status()).into());
+                                        web_sys::console::error_1(
+                                            &format!(
+                                                "Failed to leave room, status {}",
+                                                resp.status()
+                                            )
+                                            .into(),
+                                        );
                                     }
                                 }
                                 Err(e) => web_sys::console::error_1(&e),
@@ -1445,7 +1523,10 @@ fn handle_lobby_events(
                 #[cfg(all(target_arch = "wasm32", not(feature = "bevygap")))]
                 {
                     // Fallback for WASM builds without bevygap - just reset UI locally
-                    info!("🚪 Left local room: {} (bevygap disabled)", lobby_ui.room_id);
+                    info!(
+                        "🚪 Left local room: {} (bevygap disabled)",
+                        lobby_ui.room_id
+                    );
                 }
                 // Reset UI locally
                 lobby_ui.lobby_mode = LobbyMode::Main;
