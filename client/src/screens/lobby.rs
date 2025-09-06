@@ -1190,7 +1190,7 @@ fn handle_lobby_events(
                     let player_name = lobby_ui.player_name.clone();
                     let game_mode = lobby_ui.selected_mode.clone();
                     spawn_local(async move {
-                        let url = format!("{}/hook/api/rooms", http_base());
+                        let url = format!("{}/lobby/api/rooms", http_base());
                         #[derive(Serialize)]
                         struct CreateReq<'a> { host_name: &'a str, game_mode: &'a str, max_players: u32 }
                         let body = serde_json::to_string(&CreateReq { host_name: &player_name, game_mode: &game_mode, max_players: 4 }).unwrap();
@@ -1273,7 +1273,7 @@ fn handle_lobby_events(
                 #[cfg(all(target_arch = "wasm32", feature = "bevygap"))]
                 {
                     spawn_local(async move {
-                        let url = format!("{}/hook/api/rooms", http_base());
+                        let url = format!("{}/lobby/api/rooms", http_base());
                         match fetch_json(&url, "GET", None).await {
                             Ok(resp) => {
                                 let resp: web_sys::Response = resp.dyn_into().unwrap();
@@ -1355,7 +1355,7 @@ fn handle_lobby_events(
                         let room_id = lobby_ui.room_id.clone();
                         let player_name = lobby_ui.player_name.clone();
                         spawn_local(async move {
-                            let url = format!("{}/hook/api/rooms/{}/leave", http_base(), room_id);
+                            let url = format!("{}/lobby/api/rooms/{}/leave", http_base(), room_id);
                             #[derive(Serialize)]
                             struct LeaveReq<'a> { player_name: &'a str }
                             let body = serde_json::to_string(&LeaveReq { player_name: &player_name }).unwrap();

@@ -820,7 +820,7 @@ volumes:
 #### Option 1: IP Allowlisting (Simple)
 ```nginx
 # Only allow known game server IPs to access lobby
-location /hook/api/ {
+location /lobby/api/ {
     allow 192.168.1.0/24;  # Internal network
     allow 203.0.113.42;    # Edgegap server IP
     deny all;
