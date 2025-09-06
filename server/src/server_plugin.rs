@@ -11,7 +11,15 @@ use std::env;
 use crate::build_info::BuildInfo;
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 
-pub struct ServerPlugin;
+pub struct ServerPlugin {
+    pub cert_digest: Option<String>,
+}
+
+impl ServerPlugin {
+    pub fn new(cert_digest: Option<String>) -> Self {
+        Self { cert_digest }
+    }
+}
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
@@ -42,7 +50,7 @@ impl Plugin for ServerPlugin {
         // Build metadata for diagnostics
         app.insert_resource(BuildInfo::get());
 
-        app.insert_resource(ServerMetadata::new());
+        app.insert_resource(ServerMetadata::new(self.cert_digest.clone()));
 
         // Server-specific systems
         app.add_systems(Startup, (setup_world, setup_server_metadata));
@@ -188,9 +196,9 @@ pub struct ServerMetadata {
 }
 
 impl ServerMetadata {
-    pub fn new() -> Self {
+    pub fn new(cert_digest: Option<String>) -> Self {
         Self {
-            certificate_digest: env::var("LIGHTYEAR_CERTIFICATE_DIGEST").ok(),
+            certificate_digest: cert_digest,
             fqdn: env::var("SERVER_FQDN").ok(),
             build_info: BuildInfo::get(),
             startup_time: 0.0,
@@ -204,10 +212,39 @@ impl ServerMetadata {
             "ServerMetadata {{ git_sha: {}, build_time: {}, cert_digest: {}, fqdn: {}, uptime: {:.1}s }}",
             self.build_info.git_sha,
             self.build_info.build_timestamp,
-            self.certificate_digest.as_deref().unwrap_or("None"),
+            self.certificate_digest.as_deref().map(|d| &d[..16]).unwrap_or("None"),
             self.fqdn.as_deref().unwrap_or("None"),
             self.startup_time
         )
+    }
+
+    /// Get the certificate digest for API responses or client verification
+    pub fn get_certificate_digest(&self) -> Option<&str> {
+        self.certificate_digest.as_deref()
+    }
+
+    /// Check if the server has a valid certificate digest for secure connections
+    pub fn has_certificate_digest(&self) -> bool {
+        self.certificate_digest.is_some()
+    }
+
+    /// Get server information formatted for external APIs or diagnostics
+    pub fn to_api_response(&self) -> String {
+        serde_json::json!({
+            "server": {
+                "build_info": {
+                    "git_sha": self.build_info.git_sha,
+                    "git_branch": self.build_info.git_branch,
+                    "build_timestamp": self.build_info.build_timestamp,
+                    "rustc_version": self.build_info.rustc_version,
+                    "target_triple": self.build_info.target_triple
+                },
+                "certificate_digest": self.certificate_digest,
+                "fqdn": self.fqdn,
+                "startup_time": self.startup_time,
+                "has_certificate": self.has_certificate_digest()
+            }
+        }).to_string()
     }
 }
 
@@ -223,9 +260,11 @@ fn setup_server_metadata(mut metadata: ResMut<ServerMetadata>, time: Res<Time>) 
     info!("  🎯 Target: {}", metadata.build_info.target_triple);
 
     if let Some(ref digest) = metadata.certificate_digest {
-        info!("  🔐 Certificate Digest: {}", digest);
+        info!("  🔐 Certificate Digest: {}...", &digest[..16]);
+        info!("  📄 Digest available for WebTransport clients and API responses");
     } else {
-        info!("  🔐 Certificate Digest: Not configured");
+        warn!("  🔐 Certificate Digest: Not available - WebTransport may not work");
+        warn!("  💡 Consider setting ARBITRIUM_PUBLIC_IP, SELF_SIGNED_SANS, or LIGHTYEAR_CERTIFICATE_DIGEST");
     }
 
     if let Some(ref fqdn) = metadata.fqdn {
@@ -244,8 +283,10 @@ fn update_server_metadata(metadata: Res<ServerMetadata>, time: Res<Time>) {
     let uptime = time.elapsed_secs_f64() - metadata.startup_time;
     if uptime > 0.0 && (uptime % 300.0) < 0.1 {
         info!(
-            "📊 Server Status - Uptime: {:.1}s, Git SHA: {}",
-            uptime, metadata.build_info.git_sha
+            "📊 Server Status - Uptime: {:.1}s, Git SHA: {}, Cert: {}",
+            uptime, 
+            metadata.build_info.git_sha,
+            metadata.certificate_digest.as_deref().map(|d| &d[..8]).unwrap_or("None")
         );
     }
 }
@@ -355,7 +396,7 @@ impl MatchmakingQueue {
 /// System to periodically log server status with build information for diagnostics
 fn log_server_status(
     time: Res<Time>,
-    build_info: Res<BuildInfo>,
+    metadata: Res<ServerMetadata>,
     room_registry: Res<RoomRegistry>,
     mut last_log: Local<f32>,
 ) {
@@ -368,11 +409,15 @@ fn log_server_status(
         info!("📊 Server Status Report:");
         info!("   Uptime: {:.1} minutes", current_time / 60.0);
         info!("   Active Rooms: {}", room_registry.rooms.len());
-        info!("   Build: {}", build_info.format_for_log());
-        info!(
-            "   Git SHA: {} ({})",
-            build_info.git_sha, build_info.git_branch
-        );
+        info!("   Build: {}", metadata.build_info.format_for_log());
+        info!("   Git SHA: {} ({})", metadata.build_info.git_sha, metadata.build_info.git_branch);
+        
+        if let Some(digest) = metadata.get_certificate_digest() {
+            info!("   Certificate Digest: {}... (available for WebTransport)", &digest[..16]);
+        } else {
+            warn!("   Certificate Digest: Not available (WebTransport may not work)");
+        }
+        
 
         // Log room details if any exist
         if !room_registry.rooms.is_empty() {
@@ -384,6 +429,8 @@ fn log_server_status(
                 );
             }
         }
+        
+        debug!("📋 Full server metadata: {}", metadata.to_debug_string());
     }
 }
 
