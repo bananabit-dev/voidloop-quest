@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevygap_client_plugin::BevygapClientPlugin;
 
 #[cfg(feature = "bevygap")]
-use bevygap_client_plugin::prelude::{BevygapClientConfig, BevygapConnectExt, BevygapClientState};
+use bevygap_client_plugin::prelude::BevygapClientConfig;
 
 use leafwing_input_manager::prelude::*;
 
