@@ -33,8 +33,11 @@ impl Plugin for ServerPlugin {
         // Add input plugin for shared systems that need it
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
 
-        // Add mouse button input resource that the input manager expects
+        // Add input resources that the input manager expects (minimal setup for headless server)
         app.init_resource::<bevy::input::ButtonInput<bevy::input::mouse::MouseButton>>();
+        app.init_resource::<bevy::input::ButtonInput<bevy::input::keyboard::KeyCode>>();
+        app.init_resource::<bevy::input::mouse::AccumulatedMouseMotion>();
+        app.init_resource::<bevy::input::mouse::AccumulatedMouseScroll>();
 
         // Networking
         #[cfg(feature = "bevygap")]
