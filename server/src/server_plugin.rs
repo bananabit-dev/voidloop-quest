@@ -8,9 +8,7 @@ use std::env;
 #[cfg(feature = "bevygap")]
 use bevygap_server_plugin::prelude::*;
 #[cfg(feature = "bevygap")]
-use lightyear::prelude::*;
-#[cfg(feature = "bevygap")]
-use lightyear::prelude::server::ServerPlugins;
+use lightyear::prelude::Replicate;
 
 use crate::build_info::BuildInfo;
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
@@ -58,17 +56,7 @@ impl Plugin for ServerPlugin {
         // Networking (Lightyear server) and Edgegap integration
         #[cfg(feature = "bevygap")]
         {
-            // Configure and add Lightyear server plugins so ReplicationSender and networking resources exist
-            let _net_config = build_server_netcode_config();
-            app.add_plugins(ServerPlugins {
-                tick_duration: std::time::Duration::from_secs_f32(1.0 / 60.0),
-            });
-
-            // Start listening once bevygap reports ready; as a fallback also start on Startup
-            app.add_observer(start_listening_once_bevygap_ready);
-            app.add_systems(Startup, start_listening);
-
-            // Add Bevygap integration (NATS, metadata)
+            // Let BevygapServerPlugin handle lightyear configuration internally
             app.add_plugins(BevygapServerPlugin);
         }
 
@@ -98,88 +86,7 @@ impl Plugin for ServerPlugin {
     }
 }
 
-#[cfg(feature = "bevygap")]
-fn start_listening_once_bevygap_ready(_trigger: Trigger<BevygapReady>, mut _commands: Commands) {
-    info!("Starting Lightyear server after bevygap ready");
-    // TODO: Fix start_server API call
-    // commands.start_server();
-}
 
-#[cfg(feature = "bevygap")]
-fn start_listening(mut _commands: Commands) {
-    // Safe to call multiple times; Lightyear will ignore if already started
-    info!("Starting Lightyear server (Startup)");
-    // TODO: Fix start_server API call
-    // commands.start_server();
-}
-
-#[cfg(feature = "bevygap")]
-fn build_server_netcode_config() -> u32 {
-    // TODO: Fix this function to use current lightyear API
-    // This is a placeholder to get compilation working
-    80085
-    /*
-    use lightyear::prelude::server::*;
-
-    // Build SANs list similar to bevygap-spaceships
-    let mut sans = vec![
-        "localhost".to_string(),
-        "127.0.0.1".to_string(),
-        "::1".to_string(),
-    ];
-    if let Ok(public_ip) = std::env::var("ARBITRIUM_PUBLIC_IP") {
-        info!("🔐 SAN += ARBITRIUM_PUBLIC_IP: {}", public_ip);
-        sans.push(public_ip);
-        sans.push("*.pr.edgegap.net".to_string());
-    }
-    if let Ok(san) = std::env::var("SELF_SIGNED_SANS") {
-        info!("🔐 SAN += SELF_SIGNED_SANS: {}", san);
-        sans.extend(san.split(',').map(|s| s.to_string()));
-    }
-
-    info!("🔐 Creating self-signed certificate with SANs: {:?}", sans);
-    let certificate = server::Identity::self_signed(sans).expect("Failed to create self-signed cert");
-
-    // Listen on configured port (default 6420)
-    let port: u16 = std::env::var("SERVER_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(6420);
-    let listen_addr = format!("0.0.0.0:{}", port).parse().unwrap();
-    info!("Listening on {:?}", listen_addr);
-
-    let transport_config = ServerTransport::WebTransportServer {
-        server_addr: listen_addr,
-        certificate,
-    };
-
-    let io_config = server::IoConfig {
-        transport: transport_config,
-        conditioner: None,
-        compression: CompressionConfig::None,
-    };
-
-    // Protocol ID and private key from env (see README/setup.sh)
-    let protocol_id: u64 = std::env::var("LIGHTYEAR_PROTOCOL_ID")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(80085);
-
-    let key = read_lightyear_private_key_from_env().unwrap_or_else(|| {
-        warn!("LIGHTYEAR_PRIVATE_KEY not set, using dummy key");
-        DUMMY_PRIVATE_KEY
-    });
-
-    let netcode_config = server::NetcodeConfig::default()
-        .with_protocol_id(protocol_id)
-        .with_key(key);
-
-    server::NetConfig::Netcode {
-        config: netcode_config,
-        io: io_config,
-    }
-    */
-}
 
 fn setup_world(mut commands: Commands) {
     info!("Setting up game world...");
