@@ -8,9 +8,9 @@ use std::env;
 #[cfg(feature = "bevygap")]
 use bevygap_server_plugin::prelude::*;
 #[cfg(feature = "bevygap")]
-use lightyear::prelude::{server, *};
+use lightyear::prelude::server::{NetcodeConfig, NetcodeServer};
 #[cfg(feature = "bevygap")]
-use lightyear::prelude::server::{NetcodeServer, NetcodeConfig};
+use lightyear::prelude::{server, *};
 
 use crate::build_info::BuildInfo;
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
@@ -24,19 +24,17 @@ const DUMMY_PRIVATE_KEY: [u8; 32] = [0; 32]; // All zeros for local development
 /// - "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32"
 fn read_lightyear_private_key_from_env() -> Option<[u8; 32]> {
     let key_str = std::env::var("LIGHTYEAR_PRIVATE_KEY").ok()?;
-    
+
     // Remove brackets and whitespace
-    let cleaned = key_str.trim()
+    let cleaned = key_str
+        .trim()
         .trim_start_matches('[')
         .trim_end_matches(']')
         .replace(' ', "");
-    
+
     // Split by comma and parse each byte
-    let bytes: Result<Vec<u8>, _> = cleaned
-        .split(',')
-        .map(|s| s.trim().parse::<u8>())
-        .collect();
-    
+    let bytes: Result<Vec<u8>, _> = cleaned.split(',').map(|s| s.trim().parse::<u8>()).collect();
+
     match bytes {
         Ok(byte_vec) if byte_vec.len() == 32 => {
             let mut key = [0u8; 32];
@@ -152,7 +150,10 @@ fn setup_netcode_server(mut commands: Commands) {
         DUMMY_PRIVATE_KEY
     });
 
-    info!("🔐 Setting up Lightyear server with protocol_id: {}", protocol_id);
+    info!(
+        "🔐 Setting up Lightyear server with protocol_id: {}",
+        protocol_id
+    );
     if std::env::var("LIGHTYEAR_PRIVATE_KEY").is_ok() {
         info!("🔐 Using LIGHTYEAR_PRIVATE_KEY from environment");
     } else {
@@ -198,10 +199,7 @@ fn setup_world(mut commands: Commands) {
 }
 
 // Player management system that handles room logic
-fn handle_player_management(
-    _commands: Commands,
-    _existing_players: Query<Entity, With<Player>>,
-) {
+fn handle_player_management(_commands: Commands, _existing_players: Query<Entity, With<Player>>) {
     // Only spawn a test player if none exist and we're not using networking
     #[cfg(not(feature = "bevygap"))]
     {
@@ -405,7 +403,10 @@ fn log_server_status(
         if !room_registry.rooms.is_empty() {
             info!("   Room Details:");
             for (room_id, room_data) in &room_registry.rooms {
-                info!("     Room {}: {} players", room_id, room_data.current_players);
+                info!(
+                    "     Room {}: {} players",
+                    room_id, room_data.current_players
+                );
             }
         }
 
