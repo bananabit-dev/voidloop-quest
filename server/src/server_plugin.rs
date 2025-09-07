@@ -9,6 +9,8 @@ use std::env;
 use bevygap_server_plugin::prelude::*;
 #[cfg(feature = "bevygap")]
 use lightyear::prelude::{server, *};
+#[cfg(feature = "bevygap")]
+use lightyear::prelude::server::{NetcodeServer, NetcodeConfig};
 
 use crate::build_info::BuildInfo;
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
@@ -100,9 +102,12 @@ impl Plugin for ServerPlugin {
         #[cfg(feature = "bevygap")]
         {
             // Configure and add Lightyear server plugins for networking
-            // Note: The exact configuration is handled by the BevygapServerPlugin
-            // We just need to add the basic ServerPlugins
-            app.add_plugins(server::ServerPlugins::default());
+            app.add_plugins(server::ServerPlugins {
+                tick_duration: std::time::Duration::from_secs_f32(1.0 / 60.0),
+            });
+
+            // Configure the server with private key and protocol ID
+            app.add_systems(Startup, setup_netcode_server);
 
             // Add Bevygap integration (NATS, metadata)
             app.add_plugins(BevygapServerPlugin);
@@ -132,6 +137,34 @@ impl Plugin for ServerPlugin {
             ),
         );
     }
+}
+
+#[cfg(feature = "bevygap")]
+fn setup_netcode_server(mut commands: Commands) {
+    // Protocol ID and private key from env (see README/setup.sh)
+    let protocol_id: u64 = std::env::var("LIGHTYEAR_PROTOCOL_ID")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(80085);
+
+    let key = read_lightyear_private_key_from_env().unwrap_or_else(|| {
+        warn!("LIGHTYEAR_PRIVATE_KEY not set, using dummy key");
+        DUMMY_PRIVATE_KEY
+    });
+
+    info!("🔐 Setting up Lightyear server with protocol_id: {}", protocol_id);
+    if std::env::var("LIGHTYEAR_PRIVATE_KEY").is_ok() {
+        info!("🔐 Using LIGHTYEAR_PRIVATE_KEY from environment");
+    } else {
+        warn!("🔐 Using dummy private key for development (insecure!)");
+    }
+
+    let netcode_config = NetcodeConfig::default()
+        .with_protocol_id(protocol_id)
+        .with_key(key);
+
+    // Spawn the server with netcode configuration
+    commands.spawn(NetcodeServer::new(netcode_config));
 }
 
 fn setup_world(mut commands: Commands) {
