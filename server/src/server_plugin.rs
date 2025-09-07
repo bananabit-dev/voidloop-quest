@@ -7,6 +7,7 @@ use leafwing_input_manager::prelude::*;
 use lightyear::prelude::*;
 use std::collections::HashMap;
 use std::env;
+use bevy::log::{Level, LogPlugin};
 
 use crate::build_info::BuildInfo;
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
