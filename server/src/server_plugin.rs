@@ -1,13 +1,14 @@
 // Simple room management that works locally for now
+use bevy::log::{Level, LogPlugin};
 use bevy::prelude::*;
-#[cfg(feature = "bevygap")]
-use bevygap_server_plugin::prelude::BevygapServerPlugin;
 use leafwing_input_manager::prelude::*;
-#[cfg(feature = "bevygap")]
-use lightyear::prelude::*;
 use std::collections::HashMap;
 use std::env;
-use bevy::log::{Level, LogPlugin};
+
+#[cfg(feature = "bevygap")]
+use bevygap_server_plugin::prelude::*;
+#[cfg(feature = "bevygap")]
+use lightyear::prelude::{server, *};
 
 use crate::build_info::BuildInfo;
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
@@ -31,14 +32,14 @@ impl Plugin for ServerPlugin {
             )),
         );
 
-    app.add_plugins(LogPlugin {
-        level: Level::INFO, // global default if RUST_LOG not set
-        filter: env::var("RUST_LOG").unwrap_or_else(|_| {
-            // Fallback filter string (you can tune this)
-            "info,bevygap_server_plugin=info,lightyear=info,server=info".to_string()
-        }),
-        ..default()
-    });
+        app.add_plugins(LogPlugin {
+            level: Level::INFO, // global default if RUST_LOG not set
+            filter: env::var("RUST_LOG").unwrap_or_else(|_| {
+                // Fallback filter string (you can tune this)
+                "info,bevygap_server_plugin=info,lightyear=info,server=info".to_string()
+            }),
+            ..default()
+        });
 
         // Add input plugin for shared systems that need it
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
@@ -49,9 +50,28 @@ impl Plugin for ServerPlugin {
         app.init_resource::<bevy::input::mouse::AccumulatedMouseMotion>();
         app.init_resource::<bevy::input::mouse::AccumulatedMouseScroll>();
 
-        // Networking
+        // Register Lightyear protocol (components, channels, inputs)
+        app.add_plugins(shared::protocol());
+
+        // Networking (Lightyear server) and Edgegap integration
         #[cfg(feature = "bevygap")]
-        app.add_plugins(BevygapServerPlugin);
+        {
+            // Configure and add Lightyear server plugins so ReplicationSender and networking resources exist
+            let net_config = build_server_netcode_config();
+            app.add_plugins(server::ServerPlugins {
+                config: server::ServerConfig {
+                    net: vec![net_config],
+                    ..default()
+                },
+            });
+
+            // Start listening once bevygap reports ready; as a fallback also start on Startup
+            app.add_observer(start_listening_once_bevygap_ready);
+            app.add_systems(Startup, start_listening);
+
+            // Add Bevygap integration (NATS, metadata)
+            app.add_plugins(BevygapServerPlugin);
+        }
 
         // Shared game logic
         app.add_plugins(SharedPlugin);
@@ -68,8 +88,6 @@ impl Plugin for ServerPlugin {
         // Server-specific systems
         app.add_systems(Startup, (setup_world, setup_server_metadata));
 
-        // Player management system - handles spawning/despawning players
-
         app.add_systems(
             Update,
             (
@@ -78,11 +96,82 @@ impl Plugin for ServerPlugin {
                 log_server_status,
             ),
         );
+    }
+}
 
-        // ==== CUSTOM SERVER SYSTEMS AREA - Add your server-specific logic here ====
-        // Example: Game rules, scoring, AI, matchmaking logic, etc.
-        // app.add_systems(Update, your_custom_server_system);
-        // ==== END CUSTOM SERVER SYSTEMS AREA ====
+#[cfg(feature = "bevygap")]
+fn start_listening_once_bevygap_ready(_trigger: Trigger<BevygapReady>, mut commands: Commands) {
+    info!("Starting Lightyear server after bevygap ready");
+    commands.start_server();
+}
+
+#[cfg(feature = "bevygap")]
+fn start_listening(mut commands: Commands) {
+    // Safe to call multiple times; Lightyear will ignore if already started
+    info!("Starting Lightyear server (Startup)");
+    commands.start_server();
+}
+
+#[cfg(feature = "bevygap")]
+fn build_server_netcode_config() -> server::NetConfig {
+    use lightyear::prelude::server::*;
+
+    // Build SANs list similar to bevygap-spaceships
+    let mut sans = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    if let Ok(public_ip) = std::env::var("ARBITRIUM_PUBLIC_IP") {
+        info!("🔐 SAN += ARBITRIUM_PUBLIC_IP: {}", public_ip);
+        sans.push(public_ip);
+        sans.push("*.pr.edgegap.net".to_string());
+    }
+    if let Ok(san) = std::env::var("SELF_SIGNED_SANS") {
+        info!("🔐 SAN += SELF_SIGNED_SANS: {}", san);
+        sans.extend(san.split(',').map(|s| s.to_string()));
+    }
+
+    info!("🔐 Creating self-signed certificate with SANs: {:?}", sans);
+    let certificate = server::Identity::self_signed(sans).expect("Failed to create self-signed cert");
+
+    // Listen on configured port (default 6420)
+    let port: u16 = std::env::var("SERVER_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(6420);
+    let listen_addr = format!("0.0.0.0:{}", port).parse().unwrap();
+    info!("Listening on {:?}", listen_addr);
+
+    let transport_config = ServerTransport::WebTransportServer {
+        server_addr: listen_addr,
+        certificate,
+    };
+
+    let io_config = server::IoConfig {
+        transport: transport_config,
+        conditioner: None,
+        compression: CompressionConfig::None,
+    };
+
+    // Protocol ID and private key from env (see README/setup.sh)
+    let protocol_id: u64 = std::env::var("LIGHTYEAR_PROTOCOL_ID")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(80085);
+
+    let key = read_lightyear_private_key_from_env().unwrap_or_else(|| {
+        warn!("LIGHTYEAR_PRIVATE_KEY not set, using dummy key");
+        DUMMY_PRIVATE_KEY
+    });
+
+    let netcode_config = server::NetcodeConfig::default()
+        .with_protocol_id(protocol_id)
+        .with_key(key);
+
+    server::NetConfig::Netcode {
+        config: netcode_config,
+        io: io_config,
     }
 }
 
@@ -119,12 +208,9 @@ fn setup_world(mut commands: Commands) {
 // Player management system that handles room logic
 fn handle_player_management(
     _commands: Commands,
-    // For now, we'll manually spawn a test player to verify the game works
-    // In production, bevygap will handle player connections automatically
     _existing_players: Query<Entity, With<Player>>,
 ) {
     // Only spawn a test player if none exist and we're not using networking
-    // This helps with local development
     #[cfg(not(feature = "bevygap"))]
     {
         // Note: Player spawning is now handled client-side for better local development experience
@@ -257,7 +343,8 @@ impl ServerMetadata {
                 "startup_time": self.startup_time,
                 "has_certificate": self.has_certificate_digest()
             }
-        }).to_string()
+        })
+        .to_string()
     }
 }
 
@@ -277,7 +364,9 @@ fn setup_server_metadata(mut metadata: ResMut<ServerMetadata>, time: Res<Time>) 
         info!("  📄 Digest available for WebTransport clients and API responses");
     } else {
         warn!("  🔐 Certificate Digest: Not available - WebTransport may not work");
-        warn!("  💡 Consider setting ARBITRIUM_PUBLIC_IP, SELF_SIGNED_SANS, or LIGHTYEAR_CERTIFICATE_DIGEST");
+        warn!(
+            "  💡 Consider setting ARBITRIUM_PUBLIC_IP, SELF_SIGNED_SANS, or LIGHTYEAR_CERTIFICATE_DIGEST"
+        );
     }
 
     if let Some(ref fqdn) = metadata.fqdn {
@@ -289,18 +378,46 @@ fn setup_server_metadata(mut metadata: ResMut<ServerMetadata>, time: Res<Time>) 
     info!("  🚀 Startup Time: {:.3}s", metadata.startup_time);
 }
 
-// Update system for server metadata - runs periodically for diagnostics
-#[allow(dead_code)]
-fn update_server_metadata(metadata: Res<ServerMetadata>, time: Res<Time>) {
-    // Log metadata every 300 seconds (5 minutes) for diagnostics
-    let uptime = time.elapsed_secs_f64() - metadata.startup_time;
-    if uptime > 0.0 && (uptime % 300.0) < 0.1 {
+/// System to periodically log server status with build information for diagnostics
+fn log_server_status(
+    time: Res<Time>,
+    metadata: Res<ServerMetadata>,
+    room_registry: Res<RoomRegistry>,
+    mut last_log: Local<f32>,
+) {
+    let current_time = time.elapsed_secs();
+
+    // Log server status every 5 minutes (300 seconds)
+    if current_time - *last_log >= 300.0 {
+        *last_log = current_time;
+
+        info!("📊 Server Status Report:");
+        info!("   Uptime: {:.1} minutes", current_time / 60.0);
+        info!("   Active Rooms: {}", room_registry.rooms.len());
+        info!("   Build: {}", metadata.build_info.format_for_log());
         info!(
-            "📊 Server Status - Uptime: {:.1}s, Git SHA: {}, Cert: {}",
-            uptime, 
-            metadata.build_info.git_sha,
-            metadata.certificate_digest.as_deref().map(|d| &d[..8]).unwrap_or("None")
+            "   Git SHA: {} ({})",
+            metadata.build_info.git_sha, metadata.build_info.git_branch
         );
+
+        if let Some(digest) = metadata.get_certificate_digest() {
+            info!(
+                "   Certificate Digest: {}... (available for WebTransport)",
+                &digest[..16]
+            );
+        } else {
+            warn!("   Certificate Digest: Not available (WebTransport may not work)");
+        }
+
+        // Log room details if any exist
+        if !room_registry.rooms.is_empty() {
+            info!("   Room Details:");
+            for (room_id, room_data) in &room_registry.rooms {
+                info!("     Room {}: {} players", room_id, room_data.current_players);
+            }
+        }
+
+        debug!("📋 Full server metadata: {}", metadata.to_debug_string());
     }
 }
 
@@ -405,49 +522,3 @@ impl MatchmakingQueue {
         None
     }
 }
-
-/// System to periodically log server status with build information for diagnostics
-fn log_server_status(
-    time: Res<Time>,
-    metadata: Res<ServerMetadata>,
-    room_registry: Res<RoomRegistry>,
-    mut last_log: Local<f32>,
-) {
-    let current_time = time.elapsed_secs();
-
-    // Log server status every 5 minutes (300 seconds)
-    if current_time - *last_log >= 300.0 {
-        *last_log = current_time;
-
-        info!("📊 Server Status Report:");
-        info!("   Uptime: {:.1} minutes", current_time / 60.0);
-        info!("   Active Rooms: {}", room_registry.rooms.len());
-        info!("   Build: {}", metadata.build_info.format_for_log());
-        info!("   Git SHA: {} ({})", metadata.build_info.git_sha, metadata.build_info.git_branch);
-        
-        if let Some(digest) = metadata.get_certificate_digest() {
-            info!("   Certificate Digest: {}... (available for WebTransport)", &digest[..16]);
-        } else {
-            warn!("   Certificate Digest: Not available (WebTransport may not work)");
-        }
-        
-
-        // Log room details if any exist
-        if !room_registry.rooms.is_empty() {
-            info!("   Room Details:");
-            for (room_id, room_data) in &room_registry.rooms {
-                info!(
-                    "     Room {}: {} players",
-                    room_id, room_data.current_players
-                );
-            }
-        }
-        
-        debug!("📋 Full server metadata: {}", metadata.to_debug_string());
-    }
-}
-
-// ==== PLACEHOLDER FOR FUTURE NETWORKING FEATURES ====
-// TODO: Add room message handling when lightyear API is fully integrated
-// TODO: Add matchmaking queue processing
-// ==== END PLACEHOLDER ====
