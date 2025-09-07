@@ -45,6 +45,18 @@ The server will:
 1. Write the certificate contents to `/tmp/nats_ca.pem`
 2. Set `NATS_CA=/tmp/nats_ca.pem` environment variable
 3. Use this for NATS connections
+4. Test NATS connection with retry logic before starting
+
+## NATS Connection Retry
+
+The server includes automatic retry logic for NATS connections:
+
+- **Default retries**: 5 attempts with exponential backoff (1s, 2s, 3s, 4s, 5s)
+- **Command line**: `--nats-retry-count <count>` to override default
+- **Environment variable**: `NATS_RETRY_COUNT=<count>` for runtime configuration
+- **Behavior**: If all retries fail, the server logs "Failed to connect to NATS" and exits
+
+The retry logic only activates when NATS environment variables are detected (`NATS_HOST` or `NATS_USER`).
 
 ## For Game Developers
 

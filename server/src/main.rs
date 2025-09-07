@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use clap::Parser;
 use server_plugin::ServerPlugin;
 use std::env;
+#[cfg(feature = "bevygap")]
+use std::time::Duration;
 
 mod build_info;
 mod server_plugin;
@@ -28,6 +30,87 @@ struct Args {
     /// NATS certificate contents (for Edgegap deployment workaround)
     #[arg(long)]
     ca_contents: Option<String>,
+
+    /// Number of NATS connection retry attempts (default: 5)
+    #[arg(long, default_value_t = 5)]
+    nats_retry_count: u32,
+}
+
+/// Test NATS connection with retry logic
+#[cfg(feature = "bevygap")]
+async fn test_nats_connection_with_retry(retry_count: u32) -> Result<(), String> {
+    use async_nats::ConnectOptions;
+    
+    // Get NATS connection parameters from environment
+    let nats_host = env::var("NATS_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let nats_port = env::var("NATS_PORT").unwrap_or_else(|_| "4222".to_string());
+    let nats_user = env::var("NATS_USER").unwrap_or_else(|_| "gameserver".to_string());
+    let nats_password = env::var("NATS_PASSWORD").unwrap_or_default();
+    let nats_ca = env::var("NATS_CA").ok();
+    
+    // Construct NATS URL
+    let scheme = if nats_ca.is_some() { "tls" } else { "nats" };
+    let nats_url = format!("{}://{}:{}", scheme, nats_host, nats_port);
+    
+    info!("🔌 Testing NATS connection to: {}", nats_url);
+    info!("🔌 NATS User: {}", nats_user);
+    if nats_ca.is_some() {
+        info!("🔌 NATS TLS enabled with CA certificate");
+    }
+    
+    // Override retry count from environment if set
+    let retry_count = env::var("NATS_RETRY_COUNT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(retry_count);
+    
+    info!("🔄 NATS retry attempts configured: {}", retry_count);
+
+    for attempt in 1..=retry_count {
+        info!("🔄 NATS connection attempt {}/{}", attempt, retry_count);
+        
+        let options = ConnectOptions::new()
+            .user_and_password(nats_user.clone(), nats_password.clone())
+            .connection_timeout(Duration::from_secs(5))
+            .request_timeout(Some(Duration::from_secs(3)));
+        
+        // For TLS connections, we'll rely on the system's CA store or NATS_CA env var
+        // The actual TLS configuration is typically handled by the NATS client itself
+        
+        // Attempt to connect
+        match async_nats::connect_with_options(&nats_url, options).await {
+            Ok(client) => {
+                info!("✅ NATS connection successful on attempt {}", attempt);
+                
+                // Test basic functionality with a flush
+                match client.flush().await {
+                    Ok(_) => {
+                        info!("✅ NATS ping successful");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        warn!("❌ NATS ping failed: {}", e);
+                        if attempt == retry_count {
+                            return Err(format!("NATS ping failed after {} attempts: {}", retry_count, e));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("❌ NATS connection attempt {} failed: {}", attempt, e);
+                if attempt == retry_count {
+                    return Err(format!("Failed to connect to NATS after {} attempts: {}", retry_count, e));
+                }
+            }
+        }
+        
+        // Exponential backoff: 1s, 2s, 3s, 4s, 5s
+        let delay_secs = attempt;
+        info!("⏱️  Waiting {}s before next attempt...", delay_secs);
+        tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+    }
+    
+    Err("Failed to connect to NATS".to_string())
 }
 
 fn main() {
@@ -37,6 +120,40 @@ fn main() {
     // Handle NATS certificate contents if provided (Edgegap workaround)
     if let Some(ref ca_contents) = args.ca_contents {
         handle_ca_contents(ca_contents);
+    }
+
+    // Test NATS connection with retry logic before starting server (bevygap feature only)
+    #[cfg(feature = "bevygap")]
+    {
+        // Only test NATS connection if we have environment variables suggesting we need NATS
+        if env::var("NATS_HOST").is_ok() || env::var("NATS_USER").is_ok() {
+            info!("🔌 NATS environment variables detected, testing connection...");
+            
+            // Create a minimal Tokio runtime for the async NATS test
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build() 
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    error!("❌ Failed to create Tokio runtime for NATS testing: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            match rt.block_on(test_nats_connection_with_retry(args.nats_retry_count)) {
+                Ok(_) => {
+                    info!("✅ NATS connection test passed, proceeding with server startup");
+                }
+                Err(e) => {
+                    error!("❌ Failed to connect to NATS: {}", e);
+                    error!("❌ Server startup aborted due to NATS connection failure");
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            info!("🔌 No NATS environment variables detected, skipping NATS connection test");
+        }
     }
 
     // Generate certificate digest using the same approach as bevygap-spaceships
