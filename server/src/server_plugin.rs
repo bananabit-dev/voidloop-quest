@@ -30,6 +30,15 @@ impl Plugin for ServerPlugin {
             )),
         );
 
+    app.add_plugins(LogPlugin {
+        level: Level::INFO, // global default if RUST_LOG not set
+        filter: env::var("RUST_LOG").unwrap_or_else(|_| {
+            // Fallback filter string (you can tune this)
+            "info,bevygap_server_plugin=info,lightyear=info,server=info".to_string()
+        }),
+        ..default()
+    });
+
         // Add input plugin for shared systems that need it
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
 
