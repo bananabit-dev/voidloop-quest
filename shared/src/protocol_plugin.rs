@@ -134,31 +134,37 @@ pub struct ProtocolPlugin;
 
 impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
-        // Register components for replication
-        app.register_component::<Player>()
-            .add_prediction(PredictionMode::Full)
-            .add_interpolation(InterpolationMode::Full);
+        // Networking-specific component registration (only when networking features are enabled)
+        // This includes prediction, interpolation, and replication settings
+        #[cfg(feature = "server")]
+        {
+            // Register components for replication
+            app.register_component::<Player>()
+                .add_prediction(PredictionMode::Full)
+                .add_interpolation(InterpolationMode::Full);
 
-        app.register_component::<PlayerTransform>()
-            .add_prediction(PredictionMode::Full)
-            .add_interpolation(InterpolationMode::Full);
+            app.register_component::<PlayerTransform>()
+                .add_prediction(PredictionMode::Full)
+                .add_interpolation(InterpolationMode::Full);
 
-        app.register_component::<PlayerColor>()
-            .add_prediction(PredictionMode::Once);
+            app.register_component::<PlayerColor>()
+                .add_prediction(PredictionMode::Once);
 
-        app.register_component::<Platform>()
-            .add_prediction(PredictionMode::Once);
+            app.register_component::<Platform>()
+                .add_prediction(PredictionMode::Once);
 
-        // Register channel for room messages
-        app.add_channel::<Channel1>(ChannelSettings {
-            mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
-            ..default()
-        });
+            // Register channel for room messages
+            app.add_channel::<Channel1>(ChannelSettings {
+                mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
+                ..default()
+            });
+        }
 
-        // Register input
-        app.add_plugins(lightyear::prelude::input::leafwing::InputPlugin::<
-            PlayerActions,
-        >::default());
+        // Register input - lightyear input plugin not needed for basic local development
+        // The input handling is done via leafwing-input-manager directly
+        // app.add_plugins(lightyear::prelude::input::leafwing::InputPlugin::<
+        //     PlayerActions,
+        // >::default());
     }
 }
 
