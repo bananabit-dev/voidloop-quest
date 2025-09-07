@@ -13,6 +13,49 @@ use lightyear::prelude::{server, *};
 use crate::build_info::BuildInfo;
 use shared::{Platform, Player, PlayerActions, RoomInfo, SharedPlugin};
 
+// Constants for Lightyear private key handling
+const DUMMY_PRIVATE_KEY: [u8; 32] = [0; 32]; // All zeros for local development
+
+/// Parse the LIGHTYEAR_PRIVATE_KEY environment variable into a 32-byte array
+/// Supports formats like:
+/// - "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]"
+/// - "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32"
+fn read_lightyear_private_key_from_env() -> Option<[u8; 32]> {
+    let key_str = std::env::var("LIGHTYEAR_PRIVATE_KEY").ok()?;
+    
+    // Remove brackets and whitespace
+    let cleaned = key_str.trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .replace(' ', "");
+    
+    // Split by comma and parse each byte
+    let bytes: Result<Vec<u8>, _> = cleaned
+        .split(',')
+        .map(|s| s.trim().parse::<u8>())
+        .collect();
+    
+    match bytes {
+        Ok(byte_vec) if byte_vec.len() == 32 => {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&byte_vec);
+            info!("🔐 Successfully parsed LIGHTYEAR_PRIVATE_KEY from environment");
+            Some(key)
+        }
+        Ok(byte_vec) => {
+            warn!(
+                "🔐 LIGHTYEAR_PRIVATE_KEY has wrong length: expected 32 bytes, got {}",
+                byte_vec.len()
+            );
+            None
+        }
+        Err(e) => {
+            warn!("🔐 Failed to parse LIGHTYEAR_PRIVATE_KEY: {}", e);
+            None
+        }
+    }
+}
+
 pub struct ServerPlugin {
     pub cert_digest: Option<String>,
 }
@@ -56,18 +99,10 @@ impl Plugin for ServerPlugin {
         // Networking (Lightyear server) and Edgegap integration
         #[cfg(feature = "bevygap")]
         {
-            // Configure and add Lightyear server plugins so ReplicationSender and networking resources exist
-            let net_config = build_server_netcode_config();
-            app.add_plugins(server::ServerPlugins {
-                config: server::ServerConfig {
-                    net: vec![net_config],
-                    ..default()
-                },
-            });
-
-            // Start listening once bevygap reports ready; as a fallback also start on Startup
-            app.add_observer(start_listening_once_bevygap_ready);
-            app.add_systems(Startup, start_listening);
+            // Configure and add Lightyear server plugins for networking
+            // Note: The exact configuration is handled by the BevygapServerPlugin
+            // We just need to add the basic ServerPlugins
+            app.add_plugins(server::ServerPlugins::default());
 
             // Add Bevygap integration (NATS, metadata)
             app.add_plugins(BevygapServerPlugin);
@@ -96,82 +131,6 @@ impl Plugin for ServerPlugin {
                 log_server_status,
             ),
         );
-    }
-}
-
-#[cfg(feature = "bevygap")]
-fn start_listening_once_bevygap_ready(_trigger: Trigger<BevygapReady>, mut commands: Commands) {
-    info!("Starting Lightyear server after bevygap ready");
-    commands.start_server();
-}
-
-#[cfg(feature = "bevygap")]
-fn start_listening(mut commands: Commands) {
-    // Safe to call multiple times; Lightyear will ignore if already started
-    info!("Starting Lightyear server (Startup)");
-    commands.start_server();
-}
-
-#[cfg(feature = "bevygap")]
-fn build_server_netcode_config() -> server::NetConfig {
-    use lightyear::prelude::server::*;
-
-    // Build SANs list similar to bevygap-spaceships
-    let mut sans = vec![
-        "localhost".to_string(),
-        "127.0.0.1".to_string(),
-        "::1".to_string(),
-    ];
-    if let Ok(public_ip) = std::env::var("ARBITRIUM_PUBLIC_IP") {
-        info!("🔐 SAN += ARBITRIUM_PUBLIC_IP: {}", public_ip);
-        sans.push(public_ip);
-        sans.push("*.pr.edgegap.net".to_string());
-    }
-    if let Ok(san) = std::env::var("SELF_SIGNED_SANS") {
-        info!("🔐 SAN += SELF_SIGNED_SANS: {}", san);
-        sans.extend(san.split(',').map(|s| s.to_string()));
-    }
-
-    info!("🔐 Creating self-signed certificate with SANs: {:?}", sans);
-    let certificate = server::Identity::self_signed(sans).expect("Failed to create self-signed cert");
-
-    // Listen on configured port (default 6420)
-    let port: u16 = std::env::var("SERVER_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(6420);
-    let listen_addr = format!("0.0.0.0:{}", port).parse().unwrap();
-    info!("Listening on {:?}", listen_addr);
-
-    let transport_config = ServerTransport::WebTransportServer {
-        server_addr: listen_addr,
-        certificate,
-    };
-
-    let io_config = server::IoConfig {
-        transport: transport_config,
-        conditioner: None,
-        compression: CompressionConfig::None,
-    };
-
-    // Protocol ID and private key from env (see README/setup.sh)
-    let protocol_id: u64 = std::env::var("LIGHTYEAR_PROTOCOL_ID")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(80085);
-
-    let key = read_lightyear_private_key_from_env().unwrap_or_else(|| {
-        warn!("LIGHTYEAR_PRIVATE_KEY not set, using dummy key");
-        DUMMY_PRIVATE_KEY
-    });
-
-    let netcode_config = server::NetcodeConfig::default()
-        .with_protocol_id(protocol_id)
-        .with_key(key);
-
-    server::NetConfig::Netcode {
-        config: netcode_config,
-        io: io_config,
     }
 }
 
