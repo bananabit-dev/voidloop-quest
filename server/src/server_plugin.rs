@@ -30,6 +30,9 @@ impl Plugin for ServerPlugin {
             )),
         );
 
+        // Add Time plugin for shared systems that need it
+        app.add_plugins(bevy::time::TimePlugin);
+
         // Add input plugin for shared systems that need it
         app.add_plugins(InputManagerPlugin::<PlayerActions>::default());
 
