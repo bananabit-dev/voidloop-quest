@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use rand::Rng;
 
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::BevygapConnectExt;
@@ -231,7 +230,9 @@ fn show_notice(
         } else {
             notice.msg = None;
             for e in q_text.iter_mut() {
-                cmds.entity(e).despawn();
+                if let Ok(mut entity_commands) = cmds.get_entity(e) {
+                    entity_commands.despawn();
+                }
             }
         }
     }
