@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 
-use crate::protocol_plugin::{Platform, Player, PlayerActions, PlayerTransform};
+use crate::protocol_plugin::{Platform, Player, PlayerActions, PlayerTransform, PlayerAnimationState};
 
 pub struct SharedPlugin;
 
@@ -11,6 +11,7 @@ impl Plugin for SharedPlugin {
             FixedUpdate,
             (
                 player_movement_system,
+                update_animation_state_system,
                 apply_gravity_system,
                 ground_detection_system,
             )
@@ -51,6 +52,26 @@ pub fn player_movement_system(
             player.velocity.y = JUMP_FORCE;
             player.grounded = false;
         }
+    }
+}
+
+// Update animation state based on player movement
+pub fn update_animation_state_system(
+    mut query: Query<(&Player, &mut PlayerAnimationState), With<Player>>,
+) {
+    for (player, mut anim_state) in query.iter_mut() {
+        // Update movement state
+        anim_state.is_moving = player.velocity.x.abs() > 10.0;
+        
+        // Update facing direction
+        if player.velocity.x > 10.0 {
+            anim_state.facing_left = false;
+        } else if player.velocity.x < -10.0 {
+            anim_state.facing_left = true;
+        }
+        
+        // Update jumping state
+        anim_state.is_jumping = !player.grounded;
     }
 }
 
