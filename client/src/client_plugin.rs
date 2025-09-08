@@ -9,7 +9,10 @@ use bevygap_client_plugin::prelude::BevygapClientConfig;
 use leafwing_input_manager::prelude::*;
 
 use crate::screens::{AppState, LobbyPlugin};
-use shared::{Platform, Player, PlayerActions, PlayerColor, PlayerTransform, PlayerAnimationState, PlayerId, SharedPlugin};
+use shared::{
+    Platform, Player, PlayerActions, PlayerAnimationState, PlayerColor, PlayerId, PlayerTransform,
+    SharedPlugin,
+};
 
 // Resource to hold the Vey character model handle
 #[derive(Resource)]
@@ -73,7 +76,7 @@ impl Plugin for ClientPlugin {
         // Camera setup - needed for both Lobby UI and InGame
         app.add_systems(Startup, (setup_camera, load_vey_model));
 
-        // Game setup systems (only run when in game)  
+        // Game setup systems (only run when in game)
         app.add_systems(OnEnter(AppState::InGame), setup_game);
         app.add_systems(
             Update,
@@ -131,7 +134,7 @@ fn setup_camera(mut commands: Commands) {
             ..default()
         },
     ));
-    
+
     // Add basic lighting for 3D models
     commands.spawn((
         DirectionalLight {
@@ -173,7 +176,10 @@ fn spawn_platforms(commands: &mut Commands) {
 }
 
 // Handle when a new player spawns (add input to local player only)
-fn handle_player_spawn(mut commands: Commands, new_players: Query<(Entity, &PlayerId), Added<Player>>) {
+fn handle_player_spawn(
+    mut commands: Commands,
+    new_players: Query<(Entity, &PlayerId), Added<Player>>,
+) {
     for (entity, player_id) in new_players.iter() {
         // Only add input handling to the first player (local player)
         if player_id.id == 0 {
@@ -188,7 +194,7 @@ fn handle_player_spawn(mut commands: Commands, new_players: Query<(Entity, &Play
                     .with(PlayerActions::Jump, KeyCode::ArrowUp),
                 ActionState::<PlayerActions>::default(),
             ));
-            
+
             info!("🎮 Local player {} spawned with controls: A/D or Arrow keys to move, Space/W to jump", player_id.id);
         } else {
             info!("👤 Remote player {} spawned", player_id.id);
@@ -216,41 +222,57 @@ fn spawn_player_visual(
                 (color.color.to_srgba().blue + 0.3).min(1.0),
             )
         };
-        
+
         let model_entity = if let Some(vey_model) = &vey_model {
             // Use GLTF model if available
-            commands.spawn((
-                SceneRoot(vey_model.scene.clone()),
-                Transform::from_scale(Vec3::splat(50.0)), // Scale the model appropriately
-                VeyModelEntity,
-            )).id()
+            commands
+                .spawn((
+                    SceneRoot(vey_model.scene.clone()),
+                    Transform::from_scale(Vec3::splat(50.0)), // Scale the model appropriately
+                    VeyModelEntity,
+                ))
+                .id()
         } else {
             // Fallback: Create a simple geometric character (capsule)
-            info!("🎭 GLTF model not loaded, using geometric fallback for player {}", player_id.id);
-            commands.spawn((
-                Mesh3d(meshes.add(Capsule3d::new(8.0, 40.0))), // Simple capsule character
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: final_color,
-                    metallic: 0.1,
-                    perceptual_roughness: 0.9,
-                    ..default()
-                })),
-                Transform::from_translation(Vec3::new(0.0, 20.0, 0.0)), // Center the capsule
-                VeyModelEntity,
-            )).id()
+            info!(
+                "🎭 GLTF model not loaded, using geometric fallback for player {}",
+                player_id.id
+            );
+            commands
+                .spawn((
+                    Mesh3d(meshes.add(Capsule3d::new(8.0, 40.0))), // Simple capsule character
+                    MeshMaterial3d(materials.add(StandardMaterial {
+                        base_color: final_color,
+                        metallic: 0.1,
+                        perceptual_roughness: 0.9,
+                        ..default()
+                    })),
+                    Transform::from_translation(Vec3::new(0.0, 20.0, 0.0)), // Center the capsule
+                    VeyModelEntity,
+                ))
+                .id()
         };
-        
+
         // Set up the player entity with 3D transform
-        commands.entity(entity).insert((
-            Transform::from_translation(transform.translation),
-            Visibility::default(),
-            VeyModelToLoad,
-        )).add_child(model_entity);
-        
+        commands
+            .entity(entity)
+            .insert((
+                Transform::from_translation(transform.translation),
+                Visibility::default(),
+                VeyModelToLoad,
+            ))
+            .add_child(model_entity);
+
         if vey_model.is_some() {
-            info!("🎭 Spawned 3D Vey model for player {} with color adjustment", player_id.id);
+            info!(
+                "🎭 Spawned 3D Vey model for player {} with color adjustment",
+                player_id.id
+            );
         } else {
-            info!("🎭 Spawned fallback geometric character for player {}", player_id.id);
+            info!(
+                "🎭 Spawned fallback geometric character for player {}",
+                player_id.id
+            );
         }
     }
 }
@@ -318,7 +340,10 @@ fn update_vey_model_transform(
 
 // Update Vey model scale and rotation based on animation state
 fn update_vey_model_scale(
-    player_query: Query<(&PlayerAnimationState, &Children), (With<Player>, Changed<PlayerAnimationState>)>,
+    player_query: Query<
+        (&PlayerAnimationState, &Children),
+        (With<Player>, Changed<PlayerAnimationState>),
+    >,
     mut model_query: Query<&mut Transform, (With<VeyModelEntity>, Without<Player>)>,
 ) {
     for (anim_state, children) in player_query.iter() {
@@ -327,7 +352,7 @@ fn update_vey_model_scale(
                 // Handle character mirroring for left/right movement
                 let scale_x = if anim_state.facing_left { -50.0 } else { 50.0 };
                 model_transform.scale = Vec3::new(scale_x, 50.0, 50.0);
-                
+
                 // TODO: Add animation controller here for idle/running/jumping animations
                 // This would require setting up animation clips from the FBX file
             }

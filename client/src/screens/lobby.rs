@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use rand::Rng;
 
 #[cfg(feature = "bevygap")]
 use bevygap_client_plugin::prelude::BevygapConnectExt;
