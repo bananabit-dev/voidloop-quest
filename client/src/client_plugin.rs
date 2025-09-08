@@ -9,7 +9,21 @@ use bevygap_client_plugin::prelude::BevygapClientConfig;
 use leafwing_input_manager::prelude::*;
 
 use crate::screens::{AppState, LobbyPlugin};
-use shared::{Platform, Player, PlayerActions, PlayerColor, PlayerTransform, SharedPlugin};
+use shared::{Platform, Player, PlayerActions, PlayerColor, PlayerTransform, PlayerAnimationState, PlayerId, SharedPlugin};
+
+// Resource to hold the Vey character model handle
+#[derive(Resource)]
+struct VeyModel {
+    scene: Handle<Scene>,
+}
+
+// Component to mark entities that need the Vey model spawned
+#[derive(Component)]
+struct VeyModelToLoad;
+
+// Component to mark the actual 3D model entity
+#[derive(Component)]
+struct VeyModelEntity;
 
 #[derive(Resource, Default)]
 struct FloorSpawned(bool);
@@ -57,10 +71,10 @@ impl Plugin for ClientPlugin {
         }
 
         // Camera setup - needed for both Lobby UI and InGame
-        app.add_systems(Startup, setup_camera);
+        app.add_systems(Startup, (setup_camera, load_vey_model));
 
-        // Game setup systems (only run when in game)
-        app.add_systems(OnEnter(AppState::InGame), (setup_game, spawn_local_player));
+        // Game setup systems (only run when in game)  
+        app.add_systems(OnEnter(AppState::InGame), setup_game);
         app.add_systems(
             Update,
             (
@@ -68,6 +82,8 @@ impl Plugin for ClientPlugin {
                 spawn_platform_visual,
                 update_player_visual,
                 handle_player_spawn,
+                update_vey_model_transform,
+                update_vey_model_scale,
             )
                 .run_if(in_state(AppState::InGame)),
         );
@@ -106,45 +122,37 @@ fn get_matchmaker_url() -> String {
 }
 
 fn setup_camera(mut commands: Commands) {
-    // Spawn 2D camera with UI support - needed for both lobby UI and game
+    // Spawn 3D camera positioned for 2.5D platformer view
     commands.spawn((
-        Camera2d::default(),
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 0.0, 500.0).looking_at(Vec3::ZERO, Vec3::Y),
         Camera {
-            clear_color: ClearColorConfig::Default,
+            clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.2, 0.3)),
             ..default()
         },
     ));
+    
+    // Add basic lighting for 3D models
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 3000.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
+    ));
+}
+
+fn load_vey_model(mut commands: Commands, asset_server: Res<AssetServer>) {
+    // Load the Vey character model
+    let vey_scene = asset_server.load("vey.fbx#Scene0");
+    commands.insert_resource(VeyModel { scene: vey_scene });
+    info!("🎭 Loading Vey character model...");
 }
 
 fn setup_game(mut commands: Commands) {
     // Spawn some platforms for the level (only when entering game)
     spawn_platforms(&mut commands);
-}
-
-fn spawn_local_player(mut commands: Commands) {
-    info!("🎮 Spawning local player for game...");
-
-    let spawn_pos = Vec3::new(0.0, 100.0, 0.0);
-    let color = Color::srgb(0.2, 0.8, 0.2); // Green for local player
-
-    commands.spawn((
-        Player::default(),
-        PlayerTransform {
-            translation: spawn_pos,
-        },
-        PlayerColor { color },
-        InputMap::<PlayerActions>::default()
-            .with(PlayerActions::MoveLeft, KeyCode::KeyA)
-            .with(PlayerActions::MoveLeft, KeyCode::ArrowLeft)
-            .with(PlayerActions::MoveRight, KeyCode::KeyD)
-            .with(PlayerActions::MoveRight, KeyCode::ArrowRight)
-            .with(PlayerActions::Jump, KeyCode::Space)
-            .with(PlayerActions::Jump, KeyCode::KeyW)
-            .with(PlayerActions::Jump, KeyCode::ArrowUp),
-        ActionState::<PlayerActions>::default(),
-    ));
-
-    info!("✅ Local player spawned at position {:?} with controls: A/D or Arrow keys to move, Space/W/Up to jump", spawn_pos);
 }
 
 fn spawn_platforms(commands: &mut Commands) {
@@ -164,55 +172,84 @@ fn spawn_platforms(commands: &mut Commands) {
     }
 }
 
-// Handle when a new player spawns (including local player)
-fn handle_player_spawn(mut commands: Commands, new_players: Query<Entity, Added<Player>>) {
-    for entity in new_players.iter() {
-        // Add input handling for local player
-        // TODO: Determine if this is the local player
-        commands.entity(entity).insert((
-            InputMap::<PlayerActions>::default()
-                .with(PlayerActions::MoveLeft, KeyCode::KeyA)
-                .with(PlayerActions::MoveLeft, KeyCode::ArrowLeft)
-                .with(PlayerActions::MoveRight, KeyCode::KeyD)
-                .with(PlayerActions::MoveRight, KeyCode::ArrowRight)
-                .with(PlayerActions::Jump, KeyCode::Space)
-                .with(PlayerActions::Jump, KeyCode::KeyW)
-                .with(PlayerActions::Jump, KeyCode::ArrowUp),
-            ActionState::<PlayerActions>::default(),
-        ));
-
-        info!("Player spawned with controls: A/D or Arrow keys to move, Space/W to jump");
+// Handle when a new player spawns (add input to local player only)
+fn handle_player_spawn(mut commands: Commands, new_players: Query<(Entity, &PlayerId), Added<Player>>) {
+    for (entity, player_id) in new_players.iter() {
+        // Only add input handling to the first player (local player)
+        if player_id.id == 0 {
+            commands.entity(entity).insert((
+                InputMap::<PlayerActions>::default()
+                    .with(PlayerActions::MoveLeft, KeyCode::KeyA)
+                    .with(PlayerActions::MoveLeft, KeyCode::ArrowLeft)
+                    .with(PlayerActions::MoveRight, KeyCode::KeyD)
+                    .with(PlayerActions::MoveRight, KeyCode::ArrowRight)
+                    .with(PlayerActions::Jump, KeyCode::Space)
+                    .with(PlayerActions::Jump, KeyCode::KeyW)
+                    .with(PlayerActions::Jump, KeyCode::ArrowUp),
+                ActionState::<PlayerActions>::default(),
+            ));
+            
+            info!("🎮 Local player {} spawned with controls: A/D or Arrow keys to move, Space/W to jump", player_id.id);
+        } else {
+            info!("👤 Remote player {} spawned", player_id.id);
+        }
     }
 }
 
-// Spawn visual representation for players
+// Spawn 3D visual representation for players using Vey model
 fn spawn_player_visual(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    new_players: Query<(Entity, &PlayerColor, &PlayerTransform), Added<Player>>,
+    vey_model: Option<Res<VeyModel>>,
+    new_players: Query<(Entity, &PlayerColor, &PlayerTransform, &PlayerId), Added<Player>>,
 ) {
-    for (entity, color, transform) in new_players.iter() {
-        commands.entity(entity).insert((
-            Mesh2d(meshes.add(Rectangle::new(30.0, 30.0))),
-            MeshMaterial2d(materials.add(color.color)),
-            Transform::from_translation(transform.translation),
-        ));
+    if let Some(vey_model) = vey_model {
+        for (entity, color, transform, player_id) in new_players.iter() {
+            // Determine color variation for multiplayer
+            let _final_color = if player_id.id == 0 {
+                color.color // Original color for player 1
+            } else {
+                // Lighter variant for player 2+
+                Color::srgb(
+                    (color.color.to_srgba().red + 0.3).min(1.0),
+                    (color.color.to_srgba().green + 0.3).min(1.0),
+                    (color.color.to_srgba().blue + 0.3).min(1.0),
+                )
+            };
+            
+            // Spawn the 3D Vey model as a child of the player entity
+            let model_entity = commands.spawn((
+                SceneRoot(vey_model.scene.clone()),
+                Transform::from_scale(Vec3::splat(50.0)), // Scale the model appropriately
+                VeyModelEntity,
+            )).id();
+            
+            // Set up the player entity with 3D transform
+            commands.entity(entity).insert((
+                Transform::from_translation(transform.translation),
+                Visibility::default(),
+                VeyModelToLoad,
+            )).add_child(model_entity);
+            
+            info!("🎭 Spawned 3D Vey model for player {} with color adjustment", player_id.id);
+        }
     }
 }
 
-// Spawn visual representation for platforms
+// Spawn 3D visual representation for platforms
 fn spawn_platform_visual(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     new_platforms: Query<(Entity, &Transform), Added<Platform>>,
     mut floor_spawned: ResMut<FloorSpawned>,
 ) {
     for (entity, transform) in new_platforms.iter() {
         commands.entity(entity).insert((
-            Mesh2d(meshes.add(Rectangle::new(200.0, 20.0))),
-            MeshMaterial2d(materials.add(Color::srgb(0.3, 0.3, 0.3))),
+            Mesh3d(meshes.add(Cuboid::new(200.0, 20.0, 50.0))), // 3D cuboid for platforms
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.3, 0.3, 0.3),
+                ..default()
+            })),
             *transform,
         ));
     }
@@ -221,8 +258,11 @@ fn spawn_platform_visual(
     if !floor_spawned.0 {
         floor_spawned.0 = true;
         commands.spawn((
-            Mesh2d(meshes.add(Rectangle::new(1000.0, 20.0))),
-            MeshMaterial2d(materials.add(Color::srgb(0.2, 0.2, 0.2))),
+            Mesh3d(meshes.add(Cuboid::new(1000.0, 20.0, 100.0))), // 3D floor
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.2, 0.2, 0.2),
+                ..default()
+            })),
             Transform::from_xyz(0.0, -210.0, 0.0),
         ));
     }
@@ -234,6 +274,44 @@ fn update_player_visual(
 ) {
     for (mut transform, player_transform) in query.iter_mut() {
         transform.translation = player_transform.translation;
+    }
+}
+
+// Update Vey model transform to follow player
+fn update_vey_model_transform(
+    player_query: Query<(Entity, &PlayerTransform), (With<Player>, Changed<PlayerTransform>)>,
+    mut model_query: Query<&mut Transform, (With<VeyModelEntity>, Without<Player>)>,
+    children_query: Query<&Children>,
+) {
+    for (player_entity, _player_pos) in player_query.iter() {
+        // Find children that are Vey models
+        if let Ok(children) = children_query.get(player_entity) {
+            for child in children.iter() {
+                if let Ok(mut model_transform) = model_query.get_mut(child) {
+                    // Update the model position to match player
+                    model_transform.translation = Vec3::ZERO; // Relative to parent
+                }
+            }
+        }
+    }
+}
+
+// Update Vey model scale and rotation based on animation state
+fn update_vey_model_scale(
+    player_query: Query<(&PlayerAnimationState, &Children), (With<Player>, Changed<PlayerAnimationState>)>,
+    mut model_query: Query<&mut Transform, (With<VeyModelEntity>, Without<Player>)>,
+) {
+    for (anim_state, children) in player_query.iter() {
+        for child in children.iter() {
+            if let Ok(mut model_transform) = model_query.get_mut(child) {
+                // Handle character mirroring for left/right movement
+                let scale_x = if anim_state.facing_left { -50.0 } else { 50.0 };
+                model_transform.scale = Vec3::new(scale_x, 50.0, 50.0);
+                
+                // TODO: Add animation controller here for idle/running/jumping animations
+                // This would require setting up animation clips from the FBX file
+            }
+        }
     }
 }
 

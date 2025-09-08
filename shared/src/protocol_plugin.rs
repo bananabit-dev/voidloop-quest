@@ -59,6 +59,36 @@ impl Default for PlayerColor {
     }
 }
 
+// Player animation state for 3D character
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PlayerAnimationState {
+    pub is_moving: bool,
+    pub is_jumping: bool,
+    pub facing_left: bool,
+}
+
+impl Default for PlayerAnimationState {
+    fn default() -> Self {
+        Self {
+            is_moving: false,
+            is_jumping: false,
+            facing_left: false,
+        }
+    }
+}
+
+// Player ID for differentiation in multiplayer
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PlayerId {
+    pub id: u32,
+}
+
+impl Default for PlayerId {
+    fn default() -> Self {
+        Self { id: 0 }
+    }
+}
+
 // Channel for reliable messages
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Channel1;
@@ -144,6 +174,13 @@ impl Plugin for ProtocolPlugin {
             .add_interpolation(InterpolationMode::Full);
 
         app.register_component::<PlayerColor>()
+            .add_prediction(PredictionMode::Once);
+
+        app.register_component::<PlayerAnimationState>()
+            .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full);
+
+        app.register_component::<PlayerId>()
             .add_prediction(PredictionMode::Once);
 
         app.register_component::<Platform>()
