@@ -40,7 +40,12 @@ fn main() {
     "#
     );
     info!("🎮 Simple Platformer Client starting...");
+    
+    #[cfg(feature = "bevygap")]
     info!("🔐 Using BevyGap for matchmaking and connection");
+    
+    #[cfg(not(feature = "bevygap"))]
+    info!("🔧 Running in local development mode (bevygap disabled)");
 
     App::new().add_plugins(ClientPlugin).run();
 }
