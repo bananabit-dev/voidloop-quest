@@ -144,8 +144,8 @@ fn setup_camera(mut commands: Commands) {
 }
 
 fn load_vey_model(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Load the Vey character model
-    let vey_scene = asset_server.load("vey.fbx#Scene0");
+    // Load the Vey character model (GLTF format)
+    let vey_scene = asset_server.load("vey.gltf#Scene0");
     commands.insert_resource(VeyModel { scene: vey_scene });
     info!("🎭 Loading Vey character model...");
 }
@@ -199,38 +199,58 @@ fn handle_player_spawn(mut commands: Commands, new_players: Query<(Entity, &Play
 // Spawn 3D visual representation for players using Vey model
 fn spawn_player_visual(
     mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     vey_model: Option<Res<VeyModel>>,
     new_players: Query<(Entity, &PlayerColor, &PlayerTransform, &PlayerId), Added<Player>>,
 ) {
-    if let Some(vey_model) = vey_model {
-        for (entity, color, transform, player_id) in new_players.iter() {
-            // Determine color variation for multiplayer
-            let _final_color = if player_id.id == 0 {
-                color.color // Original color for player 1
-            } else {
-                // Lighter variant for player 2+
-                Color::srgb(
-                    (color.color.to_srgba().red + 0.3).min(1.0),
-                    (color.color.to_srgba().green + 0.3).min(1.0),
-                    (color.color.to_srgba().blue + 0.3).min(1.0),
-                )
-            };
-            
-            // Spawn the 3D Vey model as a child of the player entity
-            let model_entity = commands.spawn((
+    for (entity, color, transform, player_id) in new_players.iter() {
+        // Determine color variation for multiplayer
+        let final_color = if player_id.id == 0 {
+            color.color // Original color for player 1
+        } else {
+            // Lighter variant for player 2+
+            Color::srgb(
+                (color.color.to_srgba().red + 0.3).min(1.0),
+                (color.color.to_srgba().green + 0.3).min(1.0),
+                (color.color.to_srgba().blue + 0.3).min(1.0),
+            )
+        };
+        
+        let model_entity = if let Some(vey_model) = &vey_model {
+            // Use GLTF model if available
+            commands.spawn((
                 SceneRoot(vey_model.scene.clone()),
                 Transform::from_scale(Vec3::splat(50.0)), // Scale the model appropriately
                 VeyModelEntity,
-            )).id();
-            
-            // Set up the player entity with 3D transform
-            commands.entity(entity).insert((
-                Transform::from_translation(transform.translation),
-                Visibility::default(),
-                VeyModelToLoad,
-            )).add_child(model_entity);
-            
+            )).id()
+        } else {
+            // Fallback: Create a simple geometric character (capsule)
+            info!("🎭 GLTF model not loaded, using geometric fallback for player {}", player_id.id);
+            commands.spawn((
+                Mesh3d(meshes.add(Capsule3d::new(8.0, 40.0))), // Simple capsule character
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: final_color,
+                    metallic: 0.1,
+                    roughness: 0.9,
+                    ..default()
+                })),
+                Transform::from_translation(Vec3::new(0.0, 20.0, 0.0)), // Center the capsule
+                VeyModelEntity,
+            )).id()
+        };
+        
+        // Set up the player entity with 3D transform
+        commands.entity(entity).insert((
+            Transform::from_translation(transform.translation),
+            Visibility::default(),
+            VeyModelToLoad,
+        )).add_child(model_entity);
+        
+        if vey_model.is_some() {
             info!("🎭 Spawned 3D Vey model for player {} with color adjustment", player_id.id);
+        } else {
+            info!("🎭 Spawned fallback geometric character for player {}", player_id.id);
         }
     }
 }

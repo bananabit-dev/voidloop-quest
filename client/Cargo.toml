@@ -26,7 +26,8 @@ bevy = {workspace = true, features = [
   "bevy_core_pipeline",
   "bevy_gizmos",
   "bevy_scene",
-  "bevy_animation"
+  "bevy_animation",
+  "bevy_gltf"
 ]}
 shared = {path = "../shared", features = ["bevygui"]}
 lightyear.workspace = true
@@ -71,6 +72,7 @@ features = [
   "bevy_gizmos",
   "bevy_scene",
   "bevy_animation",
+  "bevy_gltf",
   "webgl2"
 ]
 
