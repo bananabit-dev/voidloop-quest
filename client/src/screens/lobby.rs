@@ -241,7 +241,7 @@ fn show_notice(
 
 #[cfg(target_arch = "wasm32")]
 fn pump_async_results(
-    mut notice: ResMut<UiNotice>, 
+    mut notice: ResMut<UiNotice>,
     mut lobby_q: Query<&mut LobbyUI>,
     mut lobby_events: EventWriter<LobbyEvent>,
 ) {
@@ -253,9 +253,12 @@ fn pump_async_results(
                 ui.is_host = true;
                 ui.lobby_mode = LobbyMode::InRoom;
                 ui.is_searching = true; // Keep searching while deploying server
-                
+
                 // Automatically trigger matchmaking to deploy the server
-                info!("🚀 Auto-starting server deployment for room: {}", room.room_id);
+                info!(
+                    "🚀 Auto-starting server deployment for room: {}",
+                    room.room_id
+                );
                 lobby_events.send(LobbyEvent::StartMatchmaking);
             }
         }
