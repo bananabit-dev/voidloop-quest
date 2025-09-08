@@ -238,7 +238,11 @@ fn show_notice(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn pump_async_results(mut notice: ResMut<UiNotice>, mut lobby_q: Query<&mut LobbyUI>) {
+fn pump_async_results(
+    mut notice: ResMut<UiNotice>, 
+    mut lobby_q: Query<&mut LobbyUI>,
+    mut lobby_events: EventWriter<LobbyEvent>,
+) {
     // room created
     PENDING_ROOM_CREATED.with(|cell| {
         if let Some(room) = cell.borrow_mut().take() {
@@ -246,7 +250,11 @@ fn pump_async_results(mut notice: ResMut<UiNotice>, mut lobby_q: Query<&mut Lobb
                 ui.room_id = room.room_id.clone();
                 ui.is_host = true;
                 ui.lobby_mode = LobbyMode::InRoom;
-                ui.is_searching = false;
+                ui.is_searching = true; // Keep searching while deploying server
+                
+                // Automatically trigger matchmaking to deploy the server
+                info!("🚀 Auto-starting server deployment for room: {}", room.room_id);
+                lobby_events.send(LobbyEvent::StartMatchmaking);
             }
         }
     });
