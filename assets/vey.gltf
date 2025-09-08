@@ -1,0 +1,94 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Simple GLTF Creator"
+  },
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "VeyCharacter",
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "name": "VeyMesh",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0
+          },
+          "indices": 1,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "CharacterMaterial",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.8,
+          0.6,
+          0.4,
+          1.0
+        ],
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.8
+      }
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 48,
+      "type": "VEC3",
+      "min": [
+        -0.4,
+        0.0,
+        -0.15
+      ],
+      "max": [
+        0.4,
+        1.85,
+        0.15
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5123,
+      "count": 216,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 576,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 576,
+      "byteLength": 432,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 1008,
+      "uri": "data:application/octet-stream;base64,mpkZvmZmxj+amRm+mpkZPmZmxj+amRm+mpkZPs3M7D+amRm+mpkZvs3M7D+amRm+mpkZvmZmxj+amRk+mpkZPmZmxj+amRk+mpkZPs3M7D+amRk+mpkZvs3M7D+amRk+zcxMvpqZGT/NzMy9zcxMPpqZGT/NzMy9zcxMPjMzsz/NzMy9zcxMvjMzsz/NzMy9zcxMvpqZGT/NzMw9zcxMPpqZGT/NzMw9zcxMPjMzsz/NzMw9zcxMvjMzsz/NzMw9zczMvmZmZj/NzEy9zcxMvmZmZj/NzEy9zcxMvmZmpj/NzEy9zczMvmZmpj/NzEy9zczMvmZmZj/NzEw9zcxMvmZmZj/NzEw9zcxMvmZmpj/NzEw9zczMvmZmpj/NzEw9zcxMPmZmZj/NzEy9zczMPmZmZj/NzEy9zczMPmZmpj/NzEy9zcxMPmZmpj/NzEy9zcxMPmZmZj/NzEw9zczMPmZmZj/NzEw9zczMPmZmpj/NzEw9zcxMPmZmpj/NzEw9mpkZvgAAAADNzEy9zcxMvQAAAADNzEy9zcxMvZqZGT/NzEy9mpkZvpqZGT/NzEy9mpkZvgAAAADNzEw9zcxMvQAAAADNzEw9zcxMvZqZGT/NzEw9mpkZvpqZGT/NzEw9zcxMPQAAAADNzEy9mpkZPgAAAADNzEy9mpkZPpqZGT/NzEy9zcxMPZqZGT/NzEy9zcxMPQAAAADNzEw9mpkZPgAAAADNzEw9mpkZPpqZGT/NzEw9zcxMPZqZGT/NzEw9AAABAAIAAAACAAMABAAHAAYABAAGAAUAAAADAAcAAAAHAAQAAQAFAAYAAQAGAAIAAwACAAYAAwAGAAcAAAAEAAUAAAAFAAEACAAJAAoACAAKAAsADAAPAA4ADAAOAA0ACAALAA8ACAAPAAwACQANAA4ACQAOAAoACwAKAA4ACwAOAA8ACAAMAA0ACAANAAkAEAARABIAEAASABMAFAAXABYAFAAWABUAEAATABcAEAAXABQAEQAVABYAEQAWABIAEwASABYAEwAWABcAEAAUABUAEAAVABEAGAAZABoAGAAaABsAHAAfAB4AHAAeAB0AGAAbAB8AGAAfABwAGQAdAB4AGQAeABoAGwAaAB4AGwAeAB8AGAAcAB0AGAAdABkAIAAhACIAIAAiACMAJAAnACYAJAAmACUAIAAjACcAIAAnACQAIQAlACYAIQAmACIAIwAiACYAIwAmACcAIAAkACUAIAAlACEAKAApACoAKAAqACsALAAvAC4ALAAuAC0AKAArAC8AKAAvACwAKQAtAC4AKQAuACoAKwAqAC4AKwAuAC8AKAAsAC0AKAAtACkA"
+    }
+  ],
+  "scene": 0
+}
