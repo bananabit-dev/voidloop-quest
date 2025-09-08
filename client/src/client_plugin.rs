@@ -232,7 +232,7 @@ fn spawn_player_visual(
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: final_color,
                     metallic: 0.1,
-                    roughness: 0.9,
+                    perceptual_roughness: 0.9,
                     ..default()
                 })),
                 Transform::from_translation(Vec3::new(0.0, 20.0, 0.0)), // Center the capsule
