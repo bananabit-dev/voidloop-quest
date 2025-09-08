@@ -13,7 +13,10 @@ use lightyear::prelude::server::{NetcodeConfig, NetcodeServer};
 use lightyear::prelude::{server, *};
 
 use crate::build_info::BuildInfo;
-use shared::{Platform, Player, PlayerActions, PlayerAnimationState, PlayerId, PlayerColor, PlayerTransform, RoomInfo, SharedPlugin};
+use shared::{
+    Platform, Player, PlayerActions, PlayerAnimationState, PlayerColor, PlayerId, PlayerTransform,
+    RoomInfo, SharedPlugin,
+};
 
 // Constants for Lightyear private key handling
 const DUMMY_PRIVATE_KEY: [u8; 32] = [0; 32]; // All zeros for local development
@@ -204,33 +207,37 @@ fn handle_player_management(mut commands: Commands, existing_players: Query<Enti
     #[cfg(not(feature = "bevygap"))]
     {
         let player_count = existing_players.iter().count();
-        
+
         // Spawn 2 players for local multiplayer testing
         if player_count == 0 {
             info!("🎮 Spawning 2 players for local multiplayer testing...");
-            
+
             // Player 1 (Green)
             commands.spawn((
                 Player::default(),
                 PlayerTransform {
                     translation: Vec3::new(-50.0, 100.0, 0.0),
                 },
-                PlayerColor { color: Color::srgb(0.2, 0.8, 0.2) },
+                PlayerColor {
+                    color: Color::srgb(0.2, 0.8, 0.2),
+                },
                 PlayerAnimationState::default(),
                 PlayerId { id: 0 },
             ));
-            
+
             // Player 2 (Lighter Green)
             commands.spawn((
                 Player::default(),
                 PlayerTransform {
                     translation: Vec3::new(50.0, 100.0, 0.0),
                 },
-                PlayerColor { color: Color::srgb(0.5, 1.0, 0.5) },
+                PlayerColor {
+                    color: Color::srgb(0.5, 1.0, 0.5),
+                },
                 PlayerAnimationState::default(),
                 PlayerId { id: 1 },
             ));
-            
+
             info!("✅ Spawned 2 players for multiplayer demo");
         }
     }
