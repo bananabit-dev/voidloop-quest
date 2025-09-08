@@ -5,6 +5,7 @@ use std::env;
 
 mod build_info;
 mod server_plugin;
+//test
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
