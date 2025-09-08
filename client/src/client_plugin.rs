@@ -160,9 +160,9 @@ fn load_vey_model(
     // Load the Vey character model (GLB format with animations)
     let vey_scene = asset_server.load("vey.glb#Scene0");
     
-    // Load animation clips
+    // Load animation clips - use placeholder handles that may fail gracefully
     let idle_animation = asset_server.load("vey.glb#Animation0"); // Assuming first animation is idle
-    let running_animation = asset_server.load("vey.glb#Animation1"); // Assuming second animation is running
+    let running_animation = asset_server.load("vey.glb#Animation1"); // Assuming second animation is running  
     let t_pose_animation = asset_server.load("vey.glb#Animation2"); // Assuming third animation is t-pose
     
     // Create animation graph
@@ -180,7 +180,7 @@ fn load_vey_model(
         running_node,
         t_pose_node,
     });
-    info!("🎭 Loading Vey character model with animations...");
+    info!("🎭 Loading Vey character model with animations from GLB file...");
 }
 
 fn setup_game(mut commands: Commands) {
@@ -303,7 +303,7 @@ fn spawn_player_visual(
 
         if vey_model.is_some() {
             info!(
-                "🎭 Spawned 3D Vey model for player {} with color adjustment",
+                "🎭 Spawned 3D Vey GLB model for player {} with animation support",
                 player_id.id
             );
         } else {
@@ -387,7 +387,9 @@ fn update_vey_model_animations(
     mut transforms: Query<&mut Transform, With<VeyModelEntity>>,
     vey_model: Option<Res<VeyModel>>,
 ) {
-    let Some(vey_model) = vey_model else { return };
+    let Some(vey_model) = vey_model else { 
+        return;
+    };
     
     for (anim_state, children) in player_query.iter() {
         for child in children.iter() {
@@ -402,16 +404,17 @@ fn update_vey_model_animations(
                 if vey_entity.animation_player != Entity::PLACEHOLDER {
                     if let Ok(mut animation_player) = animation_players.get_mut(vey_entity.animation_player) {
                         // Determine which animation to play based on state
-                        let target_node = if anim_state.is_jumping {
-                            vey_model.t_pose_node // Use t-pose for jumping/falling
+                        let (target_node, anim_name) = if anim_state.is_jumping {
+                            (vey_model.t_pose_node, "t-pose") // Use t-pose for jumping/falling
                         } else if anim_state.is_moving {
-                            vey_model.running_node
+                            (vey_model.running_node, "running")
                         } else {
-                            vey_model.idle_node
+                            (vey_model.idle_node, "idle")
                         };
                         
                         // Play the animation
                         animation_player.play(target_node).repeat();
+                        info!("🎬 Playing {} animation for player", anim_name);
                     }
                 }
             }
