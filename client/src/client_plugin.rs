@@ -153,27 +153,27 @@ fn setup_camera(mut commands: Commands) {
 }
 
 fn load_vey_model(
-    mut commands: Commands, 
+    mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut animation_graphs: ResMut<Assets<AnimationGraph>>,
 ) {
     // Load the Vey character model (GLB format with animations)
     let vey_scene = asset_server.load("vey.glb#Scene0");
-    
+
     // Load animation clips - use placeholder handles that may fail gracefully
     let idle_animation = asset_server.load("vey.glb#Animation0"); // Assuming first animation is idle
-    let running_animation = asset_server.load("vey.glb#Animation1"); // Assuming second animation is running  
+    let running_animation = asset_server.load("vey.glb#Animation1"); // Assuming second animation is running
     let t_pose_animation = asset_server.load("vey.glb#Animation2"); // Assuming third animation is t-pose
-    
+
     // Create animation graph
     let mut animation_graph = AnimationGraph::new();
     let idle_node = animation_graph.add_clip(idle_animation, 1.0, animation_graph.root);
     let running_node = animation_graph.add_clip(running_animation, 1.0, animation_graph.root);
     let t_pose_node = animation_graph.add_clip(t_pose_animation, 1.0, animation_graph.root);
-    
+
     let animation_graph_handle = animation_graphs.add(animation_graph);
-    
-    commands.insert_resource(VeyModel { 
+
+    commands.insert_resource(VeyModel {
         scene: vey_scene,
         animation_graph: animation_graph_handle,
         idle_node,
@@ -255,11 +255,13 @@ fn spawn_player_visual(
 
         let model_entity = if let Some(vey_model) = &vey_model {
             // Use GLB model if available
-            let animation_player = commands.spawn((
-                AnimationPlayer::default(),
-                AnimationGraphHandle(vey_model.animation_graph.clone()),
-            )).id();
-            
+            let animation_player = commands
+                .spawn((
+                    AnimationPlayer::default(),
+                    AnimationGraphHandle(vey_model.animation_graph.clone()),
+                ))
+                .id();
+
             let model_entity = commands
                 .spawn((
                     SceneRoot(vey_model.scene.clone()),
@@ -268,7 +270,7 @@ fn spawn_player_visual(
                 ))
                 .add_child(animation_player)
                 .id();
-                
+
             model_entity
         } else {
             // Fallback: Create a simple geometric character (capsule)
@@ -286,7 +288,9 @@ fn spawn_player_visual(
                         ..default()
                     })),
                     Transform::from_translation(Vec3::new(0.0, 20.0, 0.0)), // Center the capsule
-                    VeyModelEntity { animation_player: Entity::PLACEHOLDER }, // No animation for fallback
+                    VeyModelEntity {
+                        animation_player: Entity::PLACEHOLDER,
+                    }, // No animation for fallback
                 ))
                 .id()
         };
@@ -387,10 +391,10 @@ fn update_vey_model_animations(
     mut transforms: Query<&mut Transform, With<VeyModelEntity>>,
     vey_model: Option<Res<VeyModel>>,
 ) {
-    let Some(vey_model) = vey_model else { 
+    let Some(vey_model) = vey_model else {
         return;
     };
-    
+
     for (anim_state, children) in player_query.iter() {
         for child in children.iter() {
             if let Ok(vey_entity) = model_query.get(child) {
@@ -399,10 +403,12 @@ fn update_vey_model_animations(
                     let scale_x = if anim_state.facing_left { -50.0 } else { 50.0 };
                     model_transform.scale = Vec3::new(scale_x, 50.0, 50.0);
                 }
-                
+
                 // Update animations
                 if vey_entity.animation_player != Entity::PLACEHOLDER {
-                    if let Ok(mut animation_player) = animation_players.get_mut(vey_entity.animation_player) {
+                    if let Ok(mut animation_player) =
+                        animation_players.get_mut(vey_entity.animation_player)
+                    {
                         // Determine which animation to play based on state
                         let (target_node, anim_name) = if anim_state.is_jumping {
                             (vey_model.t_pose_node, "t-pose") // Use t-pose for jumping/falling
@@ -411,7 +417,7 @@ fn update_vey_model_animations(
                         } else {
                             (vey_model.idle_node, "idle")
                         };
-                        
+
                         // Play the animation
                         animation_player.play(target_node).repeat();
                         info!("🎬 Playing {} animation for player", anim_name);
