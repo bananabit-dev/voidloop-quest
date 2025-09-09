@@ -71,6 +71,15 @@ cargo run -p server
 cargo run -p client
 ```
 
+### **Configuration**
+```bash
+# Required environment variables for lobby deployment
+export EDGEGAP_BASE_URL="https://api.edgegap.com"
+export EDGEGAP_TOKEN="your-edgegap-api-token"
+export EDGEGAP_APP_NAME="voidloop-quest-server"  # Your Edgegap application name
+export EDGEGAP_APP_VERSION="1.0.0"               # Your Edgegap application version
+```
+
 ### **CLI Tool for Lobby Management**
 ```bash
 # List lobbies
@@ -79,8 +88,11 @@ cargo run -p lobby -- list
 # Create lobby manually
 cargo run -p lobby -- create test-lobby
 
-# Deploy lobby (starts server)
+# Deploy lobby (starts server) - REQUIRES app_name and app_version
 cargo run -p lobby -- deploy test-lobby
+
+# Alternative: specify app configuration via flags
+cargo run -p lobby -- --app-name voidloop-quest-server --app-version 1.0.0 deploy test-lobby
 
 # Get lobby status
 cargo run -p lobby -- get test-lobby
@@ -111,9 +123,10 @@ cargo run -p lobby -- delete test-lobby
 
 ### **Common Issues**
 1. **EDGEGAP_TOKEN not set** → Shows error in UI
-2. **API rate limits** → Graceful degradation 
-3. **Server deployment fails** → User feedback
-4. **Connection timeouts** → Retry logic
+2. **EDGEGAP_APP_NAME/APP_VERSION not set** → Lobby deployment doesn't spawn game servers
+3. **API rate limits** → Graceful degradation 
+4. **Server deployment fails** → User feedback
+5. **Connection timeouts** → Retry logic
 
 ### **Debugging**
 ```bash

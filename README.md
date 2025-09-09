@@ -157,11 +157,13 @@ Usage (env vars or flags):
 ```
 export EDGEGAP_BASE_URL=https://api.edgegap.com
 export EDGEGAP_TOKEN=…
+export EDGEGAP_APP_NAME=voidloop-quest-server
+export EDGEGAP_APP_VERSION=1.0.0
 
 # Create
 cargo run -p lobby -- create my-lobby
 
-# Deploy
+# Deploy (with app configuration for game server spawning)
 cargo run -p lobby -- deploy my-lobby
 
 # Get / List
@@ -172,6 +174,8 @@ cargo run -p lobby -- list
 cargo run -p lobby -- terminate my-lobby
 cargo run -p lobby -- delete my-lobby
 ```
+
+⚠️ **Important**: For lobby deployment to spawn game servers, you must set `EDGEGAP_APP_NAME` and `EDGEGAP_APP_VERSION` environment variables (or use `--app-name` and `--app-version` flags).
 
 All operations are async (tokio + reqwest) and do not block threads.
 
