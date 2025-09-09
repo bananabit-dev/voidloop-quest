@@ -272,10 +272,10 @@ fn manage_room_lifecycle(
                 );
             }
 
-            // Check if game should start
-            if room.current_players >= 1 && old_count < 1 {
+            // Check if game should start (only notify if not already started)
+            if room.current_players >= 1 && old_count < 1 && !room.started {
                 info!(
-                    "🚀 Room '{}' has minimum players ({}) - game can start!",
+                    "🚀 Room '{}' has minimum players ({}) - ready to start when host presses START GAME!",
                     room.room_id, 1
                 );
             }
@@ -465,6 +465,7 @@ pub struct RoomData {
     pub max_players: u32,
     pub player_names: Vec<String>,
     pub created_time: Option<f64>,
+    pub started: bool, // Track if the room has been explicitly started
 }
 
 #[derive(Resource, Default)]
@@ -502,6 +503,7 @@ impl RoomRegistry {
             max_players: 4,
             player_names: Vec::new(),
             created_time: None,
+            started: false, // Rooms start as not started
         };
         self.rooms.insert(room_id.clone(), room_data.clone());
         room_data
@@ -519,6 +521,23 @@ impl RoomRegistry {
                 game_mode: room.game_mode.clone(),
             })
             .collect()
+    }
+
+    /// Start a room explicitly - sets the started flag to true
+    #[allow(dead_code)]
+    pub fn start_room(&mut self, room_id: &str) -> bool {
+        if let Some(room) = self.rooms.get_mut(room_id) {
+            if !room.started {
+                room.started = true;
+                info!("🚀 Room '{}' has been started by host!", room_id);
+                return true;
+            } else {
+                warn!("🚀 Room '{}' is already started!", room_id);
+                return false;
+            }
+        }
+        warn!("🚀 Cannot start room '{}' - room not found!", room_id);
+        false
     }
 }
 
