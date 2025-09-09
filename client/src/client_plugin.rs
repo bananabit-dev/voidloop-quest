@@ -22,6 +22,7 @@ struct VeyModel {
     idle_node: AnimationNodeIndex,
     running_node: AnimationNodeIndex,
     t_pose_node: AnimationNodeIndex,
+    jumping_node: AnimationNodeIndex,
 }
 
 // Component to mark entities that need the Vey model spawned
@@ -160,17 +161,19 @@ fn load_vey_model(
     // Load the main scene from the GLB file
     let vey_scene = asset_server.load("vey.glb#Scene0");
 
-    // Load the named animations from the GLB file
-    // Based on the comment, animations are named "idle", "t-pose", and "running" (all lowercase)
-    let idle_animation = asset_server.load("vey.glb#Animation0");  // idle
-    let t_pose_animation = asset_server.load("vey.glb#Animation1"); // t-pose  
-    let running_animation = asset_server.load("vey.glb#Animation2"); // running
+    // Load the four animations from the GLB file
+    // Based on the comment, animations are: t-pose, jumping, idle, and running
+    let idle_animation = asset_server.load("vey.glb#Animation0");     // idle
+    let t_pose_animation = asset_server.load("vey.glb#Animation1");   // t-pose  
+    let running_animation = asset_server.load("vey.glb#Animation2");  // running
+    let jumping_animation = asset_server.load("vey.glb#Animation3");  // jumping
 
     // Create animation graph with the loaded animations
     let mut animation_graph = AnimationGraph::new();
     let idle_node = animation_graph.add_clip(idle_animation, 1.0, animation_graph.root);
     let t_pose_node = animation_graph.add_clip(t_pose_animation, 1.0, animation_graph.root);
     let running_node = animation_graph.add_clip(running_animation, 1.0, animation_graph.root);
+    let jumping_node = animation_graph.add_clip(jumping_animation, 1.0, animation_graph.root);
     
     let animation_graph_handle = animation_graphs.add(animation_graph);
 
@@ -180,10 +183,11 @@ fn load_vey_model(
         animation_graph: animation_graph_handle,
         idle_node,     
         running_node,   
-        t_pose_node,   
+        t_pose_node,
+        jumping_node,   
     });
     
-    info!("🎭 Loading Vey character model with animations: idle (Animation0), t-pose (Animation1), running (Animation2)");
+    info!("🎭 Loading Vey character model with four animations: idle (Animation0), t-pose (Animation1), running (Animation2), jumping (Animation3)");
 }
 
 fn setup_game(mut commands: Commands) {
@@ -414,7 +418,7 @@ fn update_vey_model_animations(
                     {
                         // Determine which animation to play based on state
                         let (target_node, anim_name) = if anim_state.is_jumping {
-                            (vey_model.t_pose_node, "t-pose") // Use t-pose for jumping/falling
+                            (vey_model.jumping_node, "jumping") // Use jumping animation for jumping/falling
                         } else if anim_state.is_moving {
                             (vey_model.running_node, "running")
                         } else {
