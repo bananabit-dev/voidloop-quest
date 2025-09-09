@@ -158,26 +158,32 @@ fn load_vey_model(
     mut animation_graphs: ResMut<Assets<AnimationGraph>>,
 ) {
     // Load the main scene from the GLB file
-    // We need to load it as a Scene, so we specify Scene0
-    // But let's try without assuming it exists first
     let vey_scene = asset_server.load("vey.glb#Scene0");
 
-    // Create a simple animation graph for now without specific animations
-    let animation_graph = AnimationGraph::new();
-    let root_node = animation_graph.root;
+    // Load the named animations from the GLB file
+    // Based on the comment, animations are named "idle", "t-pose", and "running" (all lowercase)
+    let idle_animation = asset_server.load("vey.glb#Animation0");  // idle
+    let t_pose_animation = asset_server.load("vey.glb#Animation1"); // t-pose  
+    let running_animation = asset_server.load("vey.glb#Animation2"); // running
+
+    // Create animation graph with the loaded animations
+    let mut animation_graph = AnimationGraph::new();
+    let idle_node = animation_graph.add_clip(idle_animation, 1.0, animation_graph.root);
+    let t_pose_node = animation_graph.add_clip(t_pose_animation, 1.0, animation_graph.root);
+    let running_node = animation_graph.add_clip(running_animation, 1.0, animation_graph.root);
     
     let animation_graph_handle = animation_graphs.add(animation_graph);
 
-    // Create a VeyModel resource with minimal setup to avoid asset loading errors
+    // Create VeyModel resource with proper animation nodes
     commands.insert_resource(VeyModel {
         scene: vey_scene,
         animation_graph: animation_graph_handle,
-        idle_node: root_node,     
-        running_node: root_node,   
-        t_pose_node: root_node,   
+        idle_node,     
+        running_node,   
+        t_pose_node,   
     });
     
-    info!("🎭 Loading Vey character model from GLB file (Scene0)...");
+    info!("🎭 Loading Vey character model with animations: idle (Animation0), t-pose (Animation1), running (Animation2)");
 }
 
 fn setup_game(mut commands: Commands) {
