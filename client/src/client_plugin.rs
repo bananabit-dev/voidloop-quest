@@ -163,10 +163,10 @@ fn load_vey_model(
 
     // Load the four animations from the GLB file
     // Based on the comment, animations are: t-pose, jumping, idle, and running
-    let idle_animation = asset_server.load("vey.glb#Animation0");     // idle
-    let t_pose_animation = asset_server.load("vey.glb#Animation1");   // t-pose  
-    let running_animation = asset_server.load("vey.glb#Animation2");  // running
-    let jumping_animation = asset_server.load("vey.glb#Animation3");  // jumping
+    let idle_animation = asset_server.load("vey.glb#Animation0"); // idle
+    let t_pose_animation = asset_server.load("vey.glb#Animation1"); // t-pose
+    let running_animation = asset_server.load("vey.glb#Animation2"); // running
+    let jumping_animation = asset_server.load("vey.glb#Animation3"); // jumping
 
     // Create animation graph with the loaded animations
     let mut animation_graph = AnimationGraph::new();
@@ -174,19 +174,19 @@ fn load_vey_model(
     let t_pose_node = animation_graph.add_clip(t_pose_animation, 1.0, animation_graph.root);
     let running_node = animation_graph.add_clip(running_animation, 1.0, animation_graph.root);
     let jumping_node = animation_graph.add_clip(jumping_animation, 1.0, animation_graph.root);
-    
+
     let animation_graph_handle = animation_graphs.add(animation_graph);
 
     // Create VeyModel resource with proper animation nodes
     commands.insert_resource(VeyModel {
         scene: vey_scene,
         animation_graph: animation_graph_handle,
-        idle_node,     
-        running_node,   
+        idle_node,
+        running_node,
         t_pose_node,
-        jumping_node,   
+        jumping_node,
     });
-    
+
     info!("🎭 Loading Vey character model with four animations: idle (Animation0), t-pose (Animation1), running (Animation2), jumping (Animation3)");
 }
 

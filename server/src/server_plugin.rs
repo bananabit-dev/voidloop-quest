@@ -272,13 +272,8 @@ fn manage_room_lifecycle(
                 );
             }
 
-            // Check if game should start (only notify if not already started)
-            if room.current_players >= 1 && old_count < 1 && !room.started {
-                info!(
-                    "🚀 Room '{}' has minimum players ({}) - ready to start when host presses START GAME!",
-                    room.room_id, 1
-                );
-            }
+            // Note: Game start message moved to when host actually presses START GAME button
+            // This prevents showing start messages immediately upon joining
 
             // Auto-cleanup empty rooms after 30 seconds
             if room.current_players == 0 {
@@ -529,7 +524,10 @@ impl RoomRegistry {
         if let Some(room) = self.rooms.get_mut(room_id) {
             if !room.started {
                 room.started = true;
-                info!("🚀 Room '{}' has been started by host!", room_id);
+                info!(
+                    "🚀 Starting game in room '{}' with {} players - Game is now in progress!",
+                    room_id, room.current_players
+                );
                 return true;
             } else {
                 warn!("🚀 Room '{}' is already started!", room_id);
